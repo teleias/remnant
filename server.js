@@ -9,8 +9,16 @@ const PORT = process.env.PORT || 3000;
 
 app.use(express.json({ limit: '10mb' }));
 
-// Serve built game from dist/
-app.use(express.static(path.join(__dirname, 'dist')));
+// Serve built game from dist/ with cache-busting for JS/CSS (hashed filenames)
+app.use(express.static(path.join(__dirname, 'dist'), {
+  maxAge: '1h',
+  setHeaders: (res, filePath) => {
+    // HTML should never be cached (it references hashed JS/CSS)
+    if (filePath.endsWith('.html')) {
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    }
+  }
+}));
 
 // Save directory
 const SAVE_DIR = path.join(__dirname, 'saves');

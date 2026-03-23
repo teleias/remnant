@@ -167,8 +167,13 @@ export default class TileMap {
     if (this.scene.textures.exists(baseName)) {
       return baseName;
     }
-    // Legacy fallback
-    return `tile_${tileType}`;
+    // Legacy fallback (no variant number)
+    const legacyName = `tile_${tileType}`;
+    if (this.scene.textures.exists(legacyName)) {
+      return legacyName;
+    }
+    // Ultimate fallback — grass to avoid white boxes
+    return 'tile_grass_0';
   }
 
   getObjectTexture(obj) {

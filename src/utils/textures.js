@@ -1435,17 +1435,29 @@ export function generatePlayerSprites(scene) {
     canvas.refresh();
   }
 
-  // Default 'player' texture (south facing)
-  const defaultCanvas = scene.textures.createCanvas('player', size, size + 16);
-  const dCtx = defaultCanvas.context;
-  const southTexture = scene.textures.get('player_S');
-  if (southTexture) {
-    const srcCanvas = southTexture.getSourceImage();
-    if (srcCanvas) {
-      dCtx.drawImage(srcCanvas, 0, 0);
-    }
-  }
-  defaultCanvas.refresh();
+  // Default 'player' texture (copy south-facing sprite directly)
+  // We re-draw instead of copying canvas to avoid getSourceImage() returning null
+  const defCanvas = scene.textures.createCanvas('player', size, size + 16);
+  const defCtx = defCanvas.context;
+  // Draw the south-facing player directly (same as dirs[0] above)
+  const defCx = size / 2;
+  const defSkin = '#ddbb99', defShirt = '#4a5a6a', defPants = '#334455', defBoot = '#2a1a0a', defHair = '#3a2a1a';
+  // Boots
+  defCtx.fillStyle = defBoot;
+  defCtx.fillRect(defCx - 10.5, 49.5, 7.5, 9); defCtx.fillRect(defCx + 3, 49.5, 7.5, 9);
+  // Pants
+  defCtx.fillStyle = defPants;
+  defCtx.fillRect(defCx - 10.5, 36, 9, 15); defCtx.fillRect(defCx + 1.5, 36, 9, 15);
+  // Torso
+  defCtx.fillStyle = defShirt;
+  defCtx.fillRect(defCx - 12, 19.5, 24, 18);
+  // Head
+  defCtx.fillStyle = defSkin;
+  defCtx.beginPath(); defCtx.arc(defCx, 13.5, 9, 0, Math.PI * 2); defCtx.fill();
+  // Hair
+  defCtx.fillStyle = defHair;
+  defCtx.beginPath(); defCtx.arc(defCx, 10.5, 9, Math.PI, Math.PI * 2); defCtx.fill();
+  defCanvas.refresh();
 }
 
 // Generate detailed animal silhouettes (10 species)

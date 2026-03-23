@@ -303,6 +303,36 @@ export default class WorldGen {
   }
 
   stampBuilding(px, py, typeKey, template, rng) {
+    const isVehicle = !!template.isVehicle;
+
+    if (isVehicle) {
+      // Vehicles: place a single object sprite, no walls/floors
+      const cx = px + Math.floor(template.width / 2);
+      const cy = py + Math.floor(template.height / 2);
+      if (cx < this.width && cy < this.height) {
+        this.objects[cy][cx] = {
+          type: typeKey,
+          isVehicle: true,
+          variant: 0
+        };
+        // Vehicle tile is not walkable
+        this.walkable[cy][cx] = false;
+      }
+      // Place container in adjacent tile for lootable trunk
+      if (template.rooms?.[0]?.containers?.length > 0) {
+        const tx = cx + 1 < this.width ? cx + 1 : cx - 1;
+        if (tx >= 0 && tx < this.width && !this.objects[cy][tx]) {
+          this.objects[cy][tx] = {
+            type: 'container',
+            containerType: template.rooms[0].containers[0],
+            looted: false,
+            variant: 0
+          };
+        }
+      }
+      return;
+    }
+
     // Step 1: Floor - fill interior with wood_floor or tile_floor
     const floorType = rng() > 0.5 ? 'wood_floor' : 'tile_floor';
     for (let by = 0; by < template.height; by++) {
