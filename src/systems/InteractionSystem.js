@@ -11,6 +11,7 @@ const GATHER_TIMES = {
   rock: 5.0,
   bush: 1.5,
   water: 1.5,
+  carcass: 3.0,
 };
 
 // Loot tables per object type
@@ -42,7 +43,7 @@ export default class InteractionSystem {
   constructor(scene, gameState, worldGen, inventorySystem) {
     this.scene = scene;
     this.gs = gameState;
-    this.events = scene.events;
+    this.events = scene.gameEvents;
     this.worldGen = worldGen;
     this.inventory = inventorySystem;
 
@@ -112,6 +113,19 @@ export default class InteractionSystem {
       }
     }
 
+    // Check for dead animals nearby (harvestable)
+    const animalSystem = this.scene.animalSystem;
+    if (animalSystem) {
+      const deadNearby = animalSystem.getDeadAnimalsNear(px, py, range);
+      for (const dead of deadNearby) {
+        const d = distance(px, py, dead.gx, dead.gy);
+        if (d < bestDist) {
+          bestDist = d;
+          best = { type: 'carcass', gx: dead.gx, gy: dead.gy, dist: d, animalId: dead.id, animalType: dead.type };
+        }
+      }
+    }
+
     // Emit nearest interactable for UI prompt
     if (best !== this.nearest) {
       this.nearest = best;
@@ -142,6 +156,7 @@ export default class InteractionSystem {
       gx: this.nearest.gx,
       gy: this.nearest.gy,
       time: gatherTime,
+      animalId: this.nearest.animalId || null,
     };
 
     this.events.emit('gathering:started', {
@@ -186,7 +201,20 @@ export default class InteractionSystem {
     if (!target) return;
 
     // Grant loot
-    if (target.type === 'water') {
+    if (target.type === 'carcass') {
+      // Harvest dead animal via AnimalSystem
+      const animalSystem = this.scene.animalSystem;
+      if (animalSystem && target.animalId) {
+        animalSystem.harvestAnimal(target.animalId, this.inventory);
+        this.grantXP('tracking', 5);
+      }
+      this.events.emit('gathering:complete', { type: target.type });
+      this.gathering = false;
+      this.gatherProgress = 0;
+      this.gatherTarget = null;
+      this.nearest = null;
+      return;
+    } else if (target.type === 'water') {
       this.grantItem('water_dirty', 1);
     } else {
       const lootTable = LOOT[target.type];
@@ -280,6 +308,7 @@ export default class InteractionSystem {
       case 'bush': return '[E] Forage Bush';
       case 'water': return '[E] Collect Water';
       case 'campfire': return '[E] Use Campfire';
+      case 'carcass': return '[E] Harvest Carcass';
       default: return `[E] Interact`;
     }
   }

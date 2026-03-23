@@ -8,7 +8,7 @@ export default class BuildingSystem {
   constructor(scene, gameState, worldGen, tileMap, inventorySystem) {
     this.scene = scene;
     this.gs = gameState;
-    this.events = scene.events;
+    this.events = scene.gameEvents;
     this.worldGen = worldGen;
     this.tileMap = tileMap;
     this.inventory = inventorySystem;

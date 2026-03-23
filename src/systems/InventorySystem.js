@@ -8,7 +8,7 @@ export default class InventorySystem {
   constructor(scene, gameState) {
     this.scene = scene;
     this.gs = gameState;
-    this.events = scene.events;
+    this.events = scene.gameEvents;
   }
 
   // Add items to inventory, stacking where possible
@@ -249,6 +249,37 @@ export default class InventorySystem {
       capacity += ITEMS[back.itemId].carryBonus;
     }
     return capacity;
+  }
+
+  // Degrade an equipped weapon/tool condition
+  degradeItem(slotIndex, amount) {
+    const inv = this.gs.inventory;
+    if (slotIndex < 0 || slotIndex >= inv.slots.length) return;
+    const slot = inv.slots[slotIndex];
+    if (slot.condition === null || slot.condition === undefined) return;
+
+    slot.condition -= amount;
+
+    // Also sync equipped item condition
+    const mainHand = inv.equipped.mainHand;
+    if (mainHand && mainHand.itemId === slot.itemId) {
+      mainHand.condition = slot.condition;
+    }
+
+    if (slot.condition <= 0) {
+      const itemDef = ITEMS[slot.itemId];
+      this.events.emit('item:broken', {
+        itemId: slot.itemId,
+        name: itemDef ? itemDef.name : slot.itemId,
+      });
+      // Unequip if equipped
+      if (mainHand && mainHand.itemId === slot.itemId) {
+        inv.equipped.mainHand = null;
+      }
+      // Remove from inventory
+      inv.slots.splice(slotIndex, 1);
+      this.cleanHotbarRefs();
+    }
   }
 
   // Clean up hotbar references to items no longer in inventory

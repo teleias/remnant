@@ -577,12 +577,16 @@ export function generateUITextures(scene) {
 // Generate simple animal silhouettes
 export function generateAnimalSprites(scene) {
   const animals = {
-    deer:    { color: '#8B6914', w: 24, h: 16 },
-    rabbit:  { color: '#AA9988', w: 12, h: 10 },
-    wolf:    { color: '#555555', w: 20, h: 14 },
-    bear:    { color: '#3B2508', w: 28, h: 22 },
-    cougar:  { color: '#AA8844', w: 22, h: 12 },
-    raven:   { color: '#222222', w: 10, h: 8 },
+    deer:     { color: '#8B6914', w: 24, h: 16 },
+    elk:      { color: '#6B4914', w: 30, h: 22 },
+    rabbit:   { color: '#AA9988', w: 12, h: 10 },
+    squirrel: { color: '#886644', w: 10, h: 8 },
+    wolf:     { color: '#555555', w: 20, h: 14 },
+    bear:     { color: '#3B2508', w: 28, h: 22 },
+    cougar:   { color: '#AA8844', w: 22, h: 12 },
+    coyote:   { color: '#887766', w: 18, h: 12 },
+    raven:    { color: '#222222', w: 10, h: 8 },
+    fish:     { color: '#4488AA', w: 10, h: 6 },
   };
 
   for (const [name, cfg] of Object.entries(animals)) {

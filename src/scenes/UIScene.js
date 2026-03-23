@@ -183,6 +183,10 @@ export default class UIScene extends Phaser.Scene {
     );
     this.craftingUI.create();
 
+    // === MOODLE STATUS ICONS (right side) ===
+    this.moodleIcons = [];
+    this.moodleContainer = this.add.container(w - 40, 80).setDepth(100);
+
     // === EVENT LISTENERS ===
     if (this.gameEvents) {
       // Stat changes
@@ -195,8 +199,29 @@ export default class UIScene extends Phaser.Scene {
       this.gameEvents.on('item:added', (data) => this.showNotification(`+${data.quantity} ${data.name}`));
       this.gameEvents.on('skill:levelup', (data) => this.showNotification(`${data.skill} leveled up!`));
       this.gameEvents.on('item:broken', (data) => {
-        const item = ITEMS[data.itemId];
-        this.showNotification(`${item?.name || data.itemId} broke!`);
+        this.showNotification(`${data.name || data.itemId} broke!`);
+      });
+
+      // Combat notifications
+      this.gameEvents.on('combat:playerHit', (data) => {
+        this.showNotification(`Hit! -${data.damage} HP`);
+      });
+      this.gameEvents.on('injury:added', (data) => {
+        this.showNotification(`${data.name}!`);
+      });
+      this.gameEvents.on('injury:treated', (data) => {
+        this.showNotification(`Treated ${data.type}`);
+      });
+      this.gameEvents.on('animal:died', (data) => {
+        this.showNotification(`${data.type} killed`);
+      });
+
+      // Moodle system
+      this.gameEvents.on('moodle:added', (data) => {
+        this.addMoodleIcon(data);
+      });
+      this.gameEvents.on('moodle:removed', (data) => {
+        this.removeMoodleIcon(data.type);
       });
 
       // Interaction prompt
@@ -209,6 +234,7 @@ export default class UIScene extends Phaser.Scene {
             case 'bush': text = '[E] Forage Bush'; break;
             case 'water': text = '[E] Collect Water'; break;
             case 'campfire': text = '[E] Use Campfire'; break;
+            case 'carcass': text = '[E] Harvest Carcass'; break;
           }
           this.interactPrompt.setText(text).setAlpha(1);
         } else {
@@ -406,6 +432,43 @@ export default class UIScene extends Phaser.Scene {
       alpha: 0,
       delay: 2000,
       duration: 500,
+    });
+  }
+
+  addMoodleIcon(data) {
+    // Avoid duplicates
+    if (this.moodleIcons.find(m => m.type === data.type)) return;
+
+    const idx = this.moodleIcons.length;
+    const y = idx * 28;
+
+    const bg = this.add.rectangle(0, y, 28, 24, 0x0a0c0a, 0.85)
+      .setStrokeStyle(1, Phaser.Display.Color.HexStringToColor(data.color).color);
+
+    const icon = this.add.text(0, y, data.icon, {
+      fontSize: '14px',
+    }).setOrigin(0.5);
+
+    this.moodleContainer.add(bg);
+    this.moodleContainer.add(icon);
+
+    this.moodleIcons.push({ type: data.type, bg, icon });
+  }
+
+  removeMoodleIcon(type) {
+    const idx = this.moodleIcons.findIndex(m => m.type === type);
+    if (idx < 0) return;
+
+    const moodle = this.moodleIcons[idx];
+    moodle.bg.destroy();
+    moodle.icon.destroy();
+    this.moodleIcons.splice(idx, 1);
+
+    // Reposition remaining moodles
+    this.moodleIcons.forEach((m, i) => {
+      const y = i * 28;
+      m.bg.setY(y);
+      m.icon.setY(y);
     });
   }
 }

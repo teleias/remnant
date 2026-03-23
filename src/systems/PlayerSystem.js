@@ -8,7 +8,7 @@ export default class PlayerSystem {
   constructor(scene, gameState, worldGen) {
     this.scene = scene;
     this.gs = gameState;
-    this.events = scene.events;
+    this.events = scene.gameEvents;
     this.worldGen = worldGen;
 
     this.sprite = null;

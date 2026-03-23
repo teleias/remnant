@@ -9,7 +9,7 @@ export default class SurvivalSystem {
   constructor(scene, gameState) {
     this.scene = scene;
     this.gs = gameState;
-    this.events = scene.events;
+    this.events = scene.gameEvents;
     this.lastEmittedStats = {};
   }
 

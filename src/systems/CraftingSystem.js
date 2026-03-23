@@ -10,7 +10,7 @@ export default class CraftingSystem {
   constructor(scene, gameState, inventorySystem, worldGen) {
     this.scene = scene;
     this.gs = gameState;
-    this.events = scene.events;
+    this.events = scene.gameEvents;
     this.inventory = inventorySystem;
     this.worldGen = worldGen;
 

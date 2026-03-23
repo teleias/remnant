@@ -17,7 +17,7 @@ export default class TimeSystem {
   constructor(scene, gameState) {
     this.scene = scene;
     this.gs = gameState;
-    this.events = scene.events;
+    this.events = scene.gameEvents;
     this.overlay = null;
     this.lastHour = -1;
     this.weatherTimer = 0;

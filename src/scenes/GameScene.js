@@ -4,6 +4,7 @@
 
 import Phaser from 'phaser';
 import { TILE, DEPTH } from '../config/constants.js';
+import ANIMALS from '../config/animals.js';
 import { createDefaultGameState } from '../utils/state.js';
 
 import WorldGen from '../systems/WorldGen.js';
@@ -15,6 +16,9 @@ import InteractionSystem from '../systems/InteractionSystem.js';
 import InventorySystem from '../systems/InventorySystem.js';
 import CraftingSystem from '../systems/CraftingSystem.js';
 import BuildingSystem from '../systems/BuildingSystem.js';
+import AnimalSystem from '../systems/AnimalSystem.js';
+import CombatSystem from '../systems/CombatSystem.js';
+import InjurySystem from '../systems/InjurySystem.js';
 
 export default class GameScene extends Phaser.Scene {
   constructor() {
@@ -38,7 +42,8 @@ export default class GameScene extends Phaser.Scene {
     }
 
     // Event bus for inter-system communication
-    this.events = new Phaser.Events.EventEmitter();
+    // Note: cannot use this.events (reserved by Phaser Scene)
+    this.gameEvents = new Phaser.Events.EventEmitter();
 
     // === Initialize systems in dependency order ===
 
@@ -81,6 +86,18 @@ export default class GameScene extends Phaser.Scene {
     );
     this.buildingSystem.create();
 
+    // 10. Animal system (Phase 2)
+    this.animalSystem = new AnimalSystem(this, this.gameState, this.worldGen);
+    this.animalSystem.create();
+
+    // 11. Combat system (Phase 2)
+    this.combatSystem = new CombatSystem(this, this.gameState, this.inventorySystem);
+    this.combatSystem.create();
+
+    // 12. Injury system (Phase 2)
+    this.injurySystem = new InjurySystem(this, this.gameState, this.inventorySystem);
+    this.injurySystem.create();
+
     // Render placed structures from save
     this.tileMap.renderPlacedStructures();
 
@@ -92,7 +109,7 @@ export default class GameScene extends Phaser.Scene {
     // === Launch UI overlay scene ===
     this.scene.launch('UIScene', {
       gameState: this.gameState,
-      gameEvents: this.events,
+      gameEvents: this.gameEvents,
       inventorySystem: this.inventorySystem,
       craftingSystem: this.craftingSystem,
       buildingSystem: this.buildingSystem,
@@ -140,26 +157,31 @@ export default class GameScene extends Phaser.Scene {
     // === Event listeners ===
 
     // Handle panel open/close to disable player input
-    this.events.on('ui:panelOpen', () => {
+    this.gameEvents.on('ui:panelOpen', () => {
       this.playerSystem.setInputDisabled(true);
     });
-    this.events.on('ui:panelClosed', () => {
+    this.gameEvents.on('ui:panelClosed', () => {
       this.playerSystem.setInputDisabled(false);
     });
 
     // Handle object removal (refresh tilemap)
-    this.events.on('world:objectRemoved', (data) => {
+    this.gameEvents.on('world:objectRemoved', (data) => {
       this.tileMap.refreshTile(data.gx, data.gy);
     });
 
+    // Handle animal attacks on player
+    this.gameEvents.on('animal:attack', (data) => {
+      this.combatSystem.damagePlayer(data.damage, ANIMALS[data.type]?.name || data.type);
+    });
+
     // Handle death
-    this.events.on('player:died', (data) => {
+    this.gameEvents.on('player:died', (data) => {
       this.gameOver = true;
       this.playerSystem.setInputDisabled(true);
     });
 
     // Handle crafting placeable items (enter build mode)
-    this.events.on('crafting:complete', (data) => {
+    this.gameEvents.on('crafting:complete', (data) => {
       const recipe = data.recipe;
       if (recipe.placeable) {
         // Find the output item and determine build type
@@ -172,7 +194,7 @@ export default class GameScene extends Phaser.Scene {
     for (let i = 0; i < 6; i++) {
       const idx = i;
       this.hotbarKeys[i].on('down', () => {
-        this.events.emit('hotbar:select', { slot: idx });
+        this.gameEvents.emit('hotbar:select', { slot: idx });
         // Equip hotbar item if it references a tool/weapon
         const itemId = this.gameState.inventory.hotbar[idx];
         if (itemId) {
@@ -198,6 +220,9 @@ export default class GameScene extends Phaser.Scene {
     this.interactionSystem.update(dt);
     this.craftingSystem.update(dt);
     this.buildingSystem.update();
+    this.animalSystem.update(dt);
+    this.combatSystem.update(dt);
+    this.injurySystem.update(dt);
     this.tileMap.update();
 
     // Track total play time
@@ -213,12 +238,12 @@ export default class GameScene extends Phaser.Scene {
         body: JSON.stringify({ slot: 'auto', data }),
       });
       if (res.ok) {
-        this.events.emit('game:saved');
+        this.gameEvents.emit('game:saved');
       }
     } catch (e) {
       // Fallback to localStorage
       localStorage.setItem('remnant_save', JSON.stringify(data));
-      this.events.emit('game:saved');
+      this.gameEvents.emit('game:saved');
     }
   }
 
@@ -228,5 +253,8 @@ export default class GameScene extends Phaser.Scene {
     this.playerSystem?.destroy();
     this.timeSystem?.destroy();
     this.buildingSystem?.destroy();
+    this.animalSystem?.destroy();
+    this.combatSystem?.destroy();
+    this.injurySystem?.destroy();
   }
 }

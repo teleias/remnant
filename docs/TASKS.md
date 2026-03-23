@@ -29,16 +29,16 @@ The minimum viable survival game. Player can move through an isometric world, se
 ## PHASE 2: Wildlife and Combat
 Animals populate the world. Some flee, some attack. Hunting becomes essential for survival.
 
-- [ ] **2.1 Animal Sprites** — Generated pixel art for deer, rabbit, wolf, bear
-- [ ] **2.2 Animal Spawning** — Animals spawn by biome, maintain population count
-- [ ] **2.3 Prey AI** — Deer/rabbit: idle, wander, flee when player approaches
-- [ ] **2.4 Predator AI** — Wolf: patrol, detect, stalk, approach, attack. Bear: territorial warning, charge
-- [ ] **2.5 Melee Combat** — Click to swing equipped weapon, hit detection, damage calc, knockback
-- [ ] **2.6 Animal Death/Harvest** — Kill animal, press E to harvest meat/leather/pelts
-- [ ] **2.7 Injuries System** — Bleeding, fractures, infection from combat, treatment with medical items
-- [ ] **2.8 Moodle System** — Status icons on screen edge showing all active conditions
-- [ ] **2.9 Pack Behavior** — Wolves hunt in groups, coordinate approach angles
-- [ ] **2.10 Sound Aggro** — Loud actions increase animal detection radius
+- [x] **2.1 Animal Sprites** — Generated pixel art for deer, rabbit, wolf, bear (+ elk, squirrel, cougar, coyote, raven, fish)
+- [x] **2.2 Animal Spawning** — Animals spawn by biome, maintain population count
+- [x] **2.3 Prey AI** — Deer/rabbit: idle, wander, flee when player approaches. Elk: flee then charge when low HP.
+- [x] **2.4 Predator AI** — Wolf: pack hunt. Bear: territorial warning, charge. Cougar: ambush. Coyote: opportunistic.
+- [x] **2.5 Melee Combat** — Click to swing equipped weapon, hit detection, damage calc, weapon degradation
+- [x] **2.6 Animal Death/Harvest** — Kill animal, press E to harvest meat/leather/pelts
+- [x] **2.7 Injuries System** — Bleeding, fractures, infection from combat, treatment with medical items
+- [x] **2.8 Moodle System** — Status icons on screen edge showing all active conditions
+- [x] **2.9 Pack Behavior** — Wolves hunt in groups, coordinate approach angles with pack flanking
+- [x] **2.10 Sound Aggro** — Loud actions (gathering, combat, building) increase animal detection radius
 
 **Phase 2 Deliverable:** Living world with wildlife. Hunting for food, defending against predators, treating injuries.
 
@@ -108,6 +108,6 @@ Dynamic weather, seasonal changes, and the subtle mystery layer.
 ---
 
 ## STATUS
-**Current Phase:** 1 (Complete)
-**Last Updated:** Phase 1 complete
-**Notes:** All Phase 1 tasks complete. Game is fully playable. Deployed to GitHub at teleias/remnant.
+**Current Phase:** 2 (Complete)
+**Last Updated:** Phase 2 complete
+**Notes:** Phase 1 + Phase 2 complete. Wildlife with AI behaviors, melee combat, injury/moodle system. Deployed to GitHub at teleias/remnant.
