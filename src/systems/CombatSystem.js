@@ -125,19 +125,18 @@ export default class CombatSystem {
     const mainHand = this.gs.inventory.equipped.mainHand;
     if (!mainHand) return null;
 
-    // Find it in inventory slots
-    const slotIdx = this.gs.inventory.slots.findIndex(s => s.itemId === mainHand);
-    if (slotIdx < 0) return null;
-
-    const slot = this.gs.inventory.slots[slotIdx];
-    const def = ITEMS[mainHand];
+    const itemId = mainHand.itemId;
+    const def = ITEMS[itemId];
     if (!def) return null;
 
+    // Find it in inventory slots for condition tracking
+    const slotIdx = this.gs.inventory.slots.findIndex(s => s.itemId === itemId);
+
     return {
-      id: mainHand,
+      id: itemId,
       def,
-      condition: slot.condition,
-      slot: slotIdx,
+      condition: mainHand.condition,
+      slot: slotIdx >= 0 ? slotIdx : null,
     };
   }
 

@@ -537,9 +537,12 @@ export function generatePlayerSprites(scene) {
   // Also keep a default 'player' texture (south facing) for compatibility
   const defaultCanvas = scene.textures.createCanvas('player', size, size + 8);
   const dCtx = defaultCanvas.context;
-  const existingCanvas = scene.textures.getCanvas('player_S');
-  if (existingCanvas) {
-    dCtx.drawImage(existingCanvas.canvas, 0, 0);
+  const southTexture = scene.textures.get('player_S');
+  if (southTexture) {
+    const srcCanvas = southTexture.getSourceImage();
+    if (srcCanvas) {
+      dCtx.drawImage(srcCanvas, 0, 0);
+    }
   }
   defaultCanvas.refresh();
 }

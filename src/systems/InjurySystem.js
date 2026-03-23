@@ -2,6 +2,7 @@
 // moodles (status condition icons), and medical treatment.
 
 import { clamp } from '../utils/math.js';
+import { TIME } from '../config/constants.js';
 import ITEMS from '../config/items.js';
 
 // Injury definitions
@@ -193,7 +194,7 @@ export default class InjurySystem {
 
   update(dt) {
     const stats = this.gs.stats;
-    const gameHours = dt / 60; // TIME.SECONDS_PER_HOUR = 60
+    const gameHours = dt / TIME.SECONDS_PER_HOUR;
 
     // Apply injury effects
     for (let i = this.gs.conditions.length - 1; i >= 0; i--) {

@@ -484,7 +484,7 @@ export default class AnimalSystem {
 
       case STATE.STALK:
         // Creep toward player very slowly
-        this.moveToward(animal, px, py, def.stalkSpeed || 30, dt);
+        this.moveToward(animal, px, py, def.stalkSpeed || (def.speed * 0.4), dt);
         if (dist < (def.pounceRange || 4)) {
           animal.state = STATE.CHARGE;
           animal.stateTimer = 4;
