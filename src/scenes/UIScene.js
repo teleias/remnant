@@ -1,23 +1,33 @@
-// UIScene — HUD overlay that renders on top of the game world.
-// Runs as a parallel scene to GameScene.
-// Contains: stat bars, time display, hotbar, interaction prompt,
-// gathering progress, inventory/crafting panels, and death screen.
-
 import Phaser from 'phaser';
 import { formatTime } from '../utils/math.js';
 import ITEMS from '../config/items.js';
 import InventoryUI from '../ui/InventoryUI.js';
 import CraftingUI from '../ui/CraftingUI.js';
 
-const BAR_W = 140;
-const BAR_H = 10;
-const BAR_GAP = 18;
-const BAR_X = 20;
-const BAR_Y_OFFSET = 100; // From bottom
-
 export default class UIScene extends Phaser.Scene {
   constructor() {
-    super({ key: 'UIScene' });
+    super({ key: 'UIScene', active: false });
+
+    this.gameState = null;
+    this.gameEvents = null;
+    this.inventorySystem = null;
+    this.craftingSystem = null;
+    this.buildingSystem = null;
+
+    // UI elements
+    this.statBars = {};
+    this.timeDisplay = null;
+    this.weatherDisplay = null;
+    this.hotbarSlots = [];
+    this.notifications = [];
+    this.moodleIcons = [];
+    this.interactionPrompt = null;
+    this.gatheringBar = null;
+    this.deathScreen = null;
+
+    // UI panels
+    this.inventoryUI = null;
+    this.craftingUI = null;
   }
 
   init(data) {
@@ -29,446 +39,1020 @@ export default class UIScene extends Phaser.Scene {
   }
 
   create() {
-    const w = this.cameras.main.width;
-    const h = this.cameras.main.height;
+    // Create all UI elements
+    this.createStatBars();
+    this.createTimeWeatherDisplay();
+    this.createHotbar();
+    this.createInteractionPrompt();
+    this.createGatheringBar();
+    this.createMoodleContainer();
 
-    // === HUD STAT BARS (bottom left) ===
-    this.statBars = {};
-    const barStartY = h - BAR_Y_OFFSET;
+    // Create UI panels
+    this.inventoryUI = new InventoryUI(this, this.gameState, this.gameEvents, this.inventorySystem);
+    this.inventoryUI.create();
+
+    this.craftingUI = new CraftingUI(this, this.gameState, this.gameEvents, this.craftingSystem);
+    this.craftingUI.create();
+
+    // Set up event listeners
+    this.setupEventListeners();
+    this.setupKeyboardInput();
+    this.setupResizeHandler();
+  }
+
+  createStatBars() {
+    const x = 20;
+    const startY = this.scale.height - 120;
+    const barWidth = 160;
+    const barHeight = 14;
+    const spacing = 22;
+
     const stats = [
-      { key: 'health',  label: 'HP',      color: 0xc44040 },
-      { key: 'hunger',  label: 'Hunger',  color: 0xd49040 },
-      { key: 'thirst',  label: 'Thirst',  color: 0x4080c4 },
-      { key: 'fatigue', label: 'Energy',  color: 0x40a050 },
+      { key: 'health', label: 'Health', icon: '❤️', color: 0xff0000, darkColor: 0x990000 },
+      { key: 'hunger', label: 'Hunger', icon: '🍖', color: 0xff8800, darkColor: 0xaa5500 },
+      { key: 'thirst', label: 'Thirst', icon: '💧', color: 0x0088ff, darkColor: 0x0055aa },
+      { key: 'fatigue', label: 'Fatigue', icon: '⚡', color: 0x00ff00, darkColor: 0x00aa00 }
     ];
 
-    stats.forEach((stat, i) => {
-      const y = barStartY + i * BAR_GAP;
+    stats.forEach((stat, index) => {
+      const y = startY + (index * spacing);
 
-      // Label
-      const label = this.add.text(BAR_X, y - 1, stat.label, {
-        fontFamily: 'IBM Plex Mono, monospace', fontSize: '9px', color: '#888',
-      }).setOrigin(0, 1).setDepth(100);
+      // Create container for this stat bar
+      const container = this.add.container(x, y);
 
-      // Background bar
-      const bg = this.add.rectangle(BAR_X + 50, y, BAR_W, BAR_H, 0x1a1c1a)
-        .setOrigin(0, 0.5).setDepth(100);
-      bg.setStrokeStyle(1, 0x2a2f2a);
+      // Icon
+      const icon = this.add.text(0, 0, stat.icon, {
+        fontSize: '12px',
+        align: 'center'
+      }).setOrigin(0, 0.5);
 
-      // Fill bar
-      const fill = this.add.rectangle(BAR_X + 51, y, BAR_W - 2, BAR_H - 2, stat.color)
-        .setOrigin(0, 0.5).setDepth(101);
+      // Background bar (dark with inner shadow effect)
+      const bgGraphics = this.add.graphics();
+      bgGraphics.fillStyle(0x1a1a1a, 0.8);
+      bgGraphics.fillRoundedRect(25, -barHeight/2, barWidth, barHeight, 3);
+      bgGraphics.lineStyle(1, 0x0a0a0a, 0.6);
+      bgGraphics.strokeRoundedRect(25, -barHeight/2, barWidth, barHeight, 3);
+
+      // Fill bar (gradient effect using multiple rectangles)
+      const fillGraphics = this.add.graphics();
 
       // Value text
-      const value = this.add.text(BAR_X + 50 + BAR_W + 6, y, '100', {
-        fontFamily: 'IBM Plex Mono, monospace', fontSize: '9px', color: '#999',
-      }).setOrigin(0, 0.5).setDepth(100);
+      const valueText = this.add.text(barWidth + 30, 0, '100%', {
+        fontSize: '11px',
+        fontFamily: 'IBM Plex Mono, monospace',
+        color: '#ffffff',
+        stroke: '#000000',
+        strokeThickness: 2
+      }).setOrigin(0, 0.5);
 
-      this.statBars[stat.key] = { bg, fill, value, label, baseColor: stat.color };
+      container.add([icon, bgGraphics, fillGraphics, valueText]);
+
+      this.statBars[stat.key] = {
+        container,
+        fillGraphics,
+        valueText,
+        color: stat.color,
+        darkColor: stat.darkColor,
+        value: 100,
+        pulseTimer: 0
+      };
     });
+  }
 
-    // === TIME DISPLAY (top right) ===
-    this.dayText = this.add.text(w - 20, 16, 'Day 1', {
-      fontFamily: 'Oswald, sans-serif', fontSize: '14px', color: '#c8c8c0',
-    }).setOrigin(1, 0).setDepth(100);
+  updateStatBar(key, value) {
+    const bar = this.statBars[key];
+    if (!bar) return;
 
-    this.timeText = this.add.text(w - 20, 34, '06:00', {
-      fontFamily: 'IBM Plex Mono, monospace', fontSize: '13px', color: '#aaa',
-    }).setOrigin(1, 0).setDepth(100);
+    bar.value = Phaser.Math.Clamp(value, 0, 100);
+    bar.valueText.setText(`${Math.floor(bar.value)}%`);
 
-    this.seasonText = this.add.text(w - 20, 52, 'Summer', {
-      fontFamily: 'Inter, sans-serif', fontSize: '10px', color: '#777',
-    }).setOrigin(1, 0).setDepth(100);
+    const barWidth = 160;
+    const barHeight = 14;
+    const fillWidth = (bar.value / 100) * barWidth;
 
-    // === HOTBAR (bottom center, 6 slots) ===
-    this.hotbarSlots = [];
-    const hotbarY = h - 30;
-    const hotbarStartX = w / 2 - (6 * 52) / 2;
+    // Redraw fill with gradient effect
+    bar.fillGraphics.clear();
+
+    if (fillWidth > 0) {
+      // Determine color based on value (health gets darker when low)
+      let baseColor = bar.color;
+      let darkColor = bar.darkColor;
+
+      if (key === 'health' && bar.value < 30) {
+        baseColor = 0x880000;
+        darkColor = 0x440000;
+      }
+
+      // Draw gradient using multiple segments
+      const segments = Math.ceil(fillWidth / 2);
+      for (let i = 0; i < segments; i++) {
+        const segX = 25 + (i * 2);
+        const segWidth = Math.min(2, fillWidth - (i * 2));
+        const gradient = i / segments;
+        const color = Phaser.Display.Color.Interpolate.ColorWithColor(
+          Phaser.Display.Color.IntegerToColor(darkColor),
+          Phaser.Display.Color.IntegerToColor(baseColor),
+          segments,
+          i
+        );
+        const hexColor = Phaser.Display.Color.GetColor(color.r, color.g, color.b);
+
+        bar.fillGraphics.fillStyle(hexColor, 0.9);
+        bar.fillGraphics.fillRoundedRect(segX, -barHeight/2, segWidth, barHeight, 3);
+      }
+    }
+  }
+
+  createTimeWeatherDisplay() {
+    const x = this.scale.width - 20;
+    const y = 20;
+
+    const container = this.add.container(x, y);
+
+    // Day text
+    const dayText = this.add.text(0, 0, 'Day 1', {
+      fontSize: '20px',
+      fontFamily: 'Oswald, sans-serif',
+      color: '#ffffff',
+      stroke: '#000000',
+      strokeThickness: 3
+    }).setOrigin(1, 0);
+
+    // Time text
+    const timeText = this.add.text(0, 26, '06:00', {
+      fontSize: '18px',
+      fontFamily: 'IBM Plex Mono, monospace',
+      color: '#ffcc88',
+      stroke: '#000000',
+      strokeThickness: 2
+    }).setOrigin(1, 0);
+
+    // Season text
+    const seasonText = this.add.text(0, 48, 'Spring', {
+      fontSize: '14px',
+      fontFamily: 'Oswald, sans-serif',
+      color: '#88ff88',
+      stroke: '#000000',
+      strokeThickness: 2
+    }).setOrigin(1, 0);
+
+    // Weather icon and text
+    const weatherIcon = this.add.text(0, 68, '☀️', {
+      fontSize: '16px'
+    }).setOrigin(1, 0);
+
+    const weatherText = this.add.text(-20, 70, 'Clear', {
+      fontSize: '13px',
+      fontFamily: 'IBM Plex Mono, monospace',
+      color: '#ffffff',
+      stroke: '#000000',
+      strokeThickness: 2
+    }).setOrigin(1, 0);
+
+    // Temperature
+    const tempText = this.add.text(0, 90, '72°F', {
+      fontSize: '13px',
+      fontFamily: 'IBM Plex Mono, monospace',
+      color: '#ffaa66',
+      stroke: '#000000',
+      strokeThickness: 2
+    }).setOrigin(1, 0);
+
+    container.add([dayText, timeText, seasonText, weatherIcon, weatherText, tempText]);
+
+    this.timeDisplay = {
+      container,
+      dayText,
+      timeText,
+      seasonText,
+      weatherIcon,
+      weatherText,
+      tempText
+    };
+  }
+
+  createHotbar() {
+    const slotSize = 50;
+    const gap = 4;
+    const totalWidth = (slotSize * 6) + (gap * 5);
+    const startX = (this.scale.width / 2) - (totalWidth / 2);
+    const y = this.scale.height - 80;
 
     for (let i = 0; i < 6; i++) {
-      const sx = hotbarStartX + i * 52;
+      const x = startX + (i * (slotSize + gap));
 
-      const bg = this.add.rectangle(sx + 24, hotbarY, 48, 48, 0x0a0c0a, 0.85)
-        .setStrokeStyle(1, 0x2a2f2a).setDepth(100);
+      const container = this.add.container(x, y);
 
-      const numLabel = this.add.text(sx + 4, hotbarY - 22, String(i + 1), {
-        fontFamily: 'IBM Plex Mono, monospace', fontSize: '9px', color: '#555',
-      }).setDepth(101);
+      // Slot background
+      const bg = this.add.graphics();
+      bg.fillStyle(0x2a2a2a, 0.85);
+      bg.fillRoundedRect(0, 0, slotSize, slotSize, 4);
+      bg.lineStyle(2, 0x1a1a1a, 0.9);
+      bg.strokeRoundedRect(0, 0, slotSize, slotSize, 4);
 
-      const icon = this.add.text(sx + 24, hotbarY, '', {
-        fontSize: '22px',
-      }).setOrigin(0.5).setDepth(101);
+      // Highlight border (hidden by default)
+      const highlight = this.add.graphics();
+      highlight.lineStyle(2, 0xffaa00, 1);
+      highlight.strokeRoundedRect(-1, -1, slotSize + 2, slotSize + 2, 4);
+      highlight.setVisible(false);
 
-      const count = this.add.text(sx + 44, hotbarY + 18, '', {
-        fontFamily: 'IBM Plex Mono, monospace', fontSize: '9px', color: '#ccc',
-      }).setOrigin(1, 1).setDepth(101);
+      // Number label
+      const numberText = this.add.text(4, 4, String(i + 1), {
+        fontSize: '11px',
+        fontFamily: 'IBM Plex Mono, monospace',
+        color: '#888888',
+        stroke: '#000000',
+        strokeThickness: 2
+      }).setOrigin(0, 0);
 
-      this.hotbarSlots.push({ bg, icon, count, numLabel });
+      // Item icon (emoji)
+      const iconText = this.add.text(slotSize / 2, slotSize / 2 - 4, '', {
+        fontSize: '24px'
+      }).setOrigin(0.5, 0.5);
+
+      // Stack count
+      const countText = this.add.text(slotSize - 4, slotSize - 4, '', {
+        fontSize: '11px',
+        fontFamily: 'IBM Plex Mono, monospace',
+        color: '#ffffff',
+        stroke: '#000000',
+        strokeThickness: 2
+      }).setOrigin(1, 1);
+
+      // Condition bar
+      const conditionBg = this.add.graphics();
+      conditionBg.fillStyle(0x1a1a1a, 0.7);
+      conditionBg.fillRect(2, slotSize - 6, slotSize - 4, 2);
+
+      const conditionFill = this.add.graphics();
+
+      container.add([bg, highlight, numberText, iconText, countText, conditionBg, conditionFill]);
+
+      this.hotbarSlots.push({
+        container,
+        highlight,
+        iconText,
+        countText,
+        conditionFill,
+        slotSize
+      });
+    }
+  }
+
+  updateHotbar() {
+    if (!this.gameState || !this.gameState.inventory) return;
+
+    const hotbar = this.gameState.inventory.hotbar || [];
+
+    this.hotbarSlots.forEach((slot, index) => {
+      const itemId = hotbar[index]; // hotbar stores string itemIds or null
+
+      if (itemId) {
+        const itemDef = ITEMS[itemId];
+        // Find the inventory slot for this item to get quantity/condition
+        const invSlot = this.gameState.inventory.slots.find(s => s.itemId === itemId);
+
+        if (itemDef) {
+          slot.iconText.setText(itemDef.icon || '?');
+          slot.countText.setText(invSlot && invSlot.quantity > 1 ? String(invSlot.quantity) : '');
+
+          // Update condition bar
+          const condition = invSlot?.condition !== undefined && invSlot?.condition !== null
+            ? invSlot.condition : -1;
+
+          slot.conditionFill.clear();
+          if (condition >= 0) {
+            const maxCond = itemDef.condition || 100;
+            const conditionWidth = ((slot.slotSize - 4) * condition) / maxCond;
+
+            let color = 0x00ff00; // green
+            if (condition / maxCond < 0.3) color = 0xff0000; // red
+            else if (condition / maxCond < 0.6) color = 0xffaa00; // yellow
+
+            slot.conditionFill.fillStyle(color, 0.8);
+            slot.conditionFill.fillRect(2, slot.slotSize - 6, conditionWidth, 2);
+          }
+        } else {
+          slot.iconText.setText('');
+          slot.countText.setText('');
+          slot.conditionFill.clear();
+        }
+      } else {
+        slot.iconText.setText('');
+        slot.countText.setText('');
+        slot.conditionFill.clear();
+      }
+
+      // Update highlight
+      const isSelected = this.gameState.inventory.selectedSlot === index;
+      slot.highlight.setVisible(isSelected);
+    });
+  }
+
+  createInteractionPrompt() {
+    const container = this.add.container(this.scale.width / 2, this.scale.height - 120);
+    container.setAlpha(0);
+    container.setVisible(false);
+
+    const bg = this.add.graphics();
+    const text = this.add.text(0, 0, '', {
+      fontSize: '14px',
+      fontFamily: 'IBM Plex Mono, monospace',
+      color: '#ffffff',
+      stroke: '#000000',
+      strokeThickness: 3
+    }).setOrigin(0.5, 0.5);
+
+    container.add([bg, text]);
+
+    this.interactionPrompt = { container, bg, text };
+  }
+
+  showInteractionPrompt(message) {
+    if (!this.interactionPrompt) return;
+
+    this.interactionPrompt.text.setText(message);
+
+    const padding = 12;
+    const width = this.interactionPrompt.text.width + (padding * 2);
+    const height = this.interactionPrompt.text.height + (padding * 2);
+
+    this.interactionPrompt.bg.clear();
+    this.interactionPrompt.bg.fillStyle(0x000000, 0.7);
+    this.interactionPrompt.bg.fillRoundedRect(-width/2, -height/2, width, height, 8);
+    this.interactionPrompt.bg.lineStyle(1, 0x444444, 0.8);
+    this.interactionPrompt.bg.strokeRoundedRect(-width/2, -height/2, width, height, 8);
+
+    this.interactionPrompt.container.setVisible(true);
+    this.tweens.add({
+      targets: this.interactionPrompt.container,
+      alpha: 1,
+      duration: 200,
+      ease: 'Power2'
+    });
+  }
+
+  hideInteractionPrompt() {
+    if (!this.interactionPrompt) return;
+
+    this.tweens.add({
+      targets: this.interactionPrompt.container,
+      alpha: 0,
+      duration: 200,
+      ease: 'Power2',
+      onComplete: () => {
+        this.interactionPrompt.container.setVisible(false);
+      }
+    });
+  }
+
+  createGatheringBar() {
+    const width = 140;
+    const height = 10;
+    const container = this.add.container(this.scale.width / 2, this.scale.height - 140);
+    container.setAlpha(0);
+    container.setVisible(false);
+
+    const labelText = this.add.text(0, -16, '', {
+      fontSize: '12px',
+      fontFamily: 'IBM Plex Mono, monospace',
+      color: '#ffffff',
+      stroke: '#000000',
+      strokeThickness: 2
+    }).setOrigin(0.5, 0.5);
+
+    const bg = this.add.graphics();
+    bg.fillStyle(0x1a1a1a, 0.85);
+    bg.fillRoundedRect(-width/2, -height/2, width, height, 3);
+    bg.lineStyle(1, 0x444444, 0.9);
+    bg.strokeRoundedRect(-width/2, -height/2, width, height, 3);
+
+    const fill = this.add.graphics();
+
+    container.add([labelText, bg, fill]);
+
+    this.gatheringBar = { container, labelText, fill, width, height, progress: 0 };
+  }
+
+  updateGatheringBar(progress, label) {
+    if (!this.gatheringBar) return;
+
+    this.gatheringBar.progress = Phaser.Math.Clamp(progress, 0, 1);
+    this.gatheringBar.labelText.setText(label || 'Gathering...');
+
+    const fillWidth = this.gatheringBar.width * this.gatheringBar.progress;
+
+    this.gatheringBar.fill.clear();
+    if (fillWidth > 0) {
+      this.gatheringBar.fill.fillStyle(0x00ff00, 0.8);
+      this.gatheringBar.fill.fillRoundedRect(
+        -this.gatheringBar.width/2,
+        -this.gatheringBar.height/2,
+        fillWidth,
+        this.gatheringBar.height,
+        3
+      );
+    }
+  }
+
+  showGatheringBar() {
+    if (!this.gatheringBar) return;
+
+    this.gatheringBar.container.setVisible(true);
+    this.tweens.add({
+      targets: this.gatheringBar.container,
+      alpha: 1,
+      duration: 200,
+      ease: 'Power2'
+    });
+  }
+
+  hideGatheringBar() {
+    if (!this.gatheringBar) return;
+
+    this.tweens.add({
+      targets: this.gatheringBar.container,
+      alpha: 0,
+      duration: 200,
+      ease: 'Power2',
+      onComplete: () => {
+        this.gatheringBar.container.setVisible(false);
+        this.gatheringBar.progress = 0;
+      }
+    });
+  }
+
+  createMoodleContainer() {
+    this.moodleContainer = this.add.container(this.scale.width - 20, 130);
+  }
+
+  addNotification(message, color = '#ffffff') {
+    const maxNotifications = 5;
+
+    // Remove oldest notification if at max
+    if (this.notifications.length >= maxNotifications) {
+      const oldest = this.notifications.shift();
+      this.tweens.add({
+        targets: oldest.container,
+        alpha: 0,
+        duration: 200,
+        onComplete: () => oldest.container.destroy()
+      });
     }
 
-    this.activeHotbarSlot = 0;
+    // Shift existing notifications down
+    this.notifications.forEach((notif, index) => {
+      this.tweens.add({
+        targets: notif.container,
+        y: 60 + (index * 40),
+        duration: 300,
+        ease: 'Power2'
+      });
+    });
 
-    // === INTERACTION PROMPT (bottom center, above hotbar) ===
-    this.interactPrompt = this.add.text(w / 2, h - 70, '', {
-      fontFamily: 'Inter, sans-serif', fontSize: '12px', color: '#c8c8c0',
-      backgroundColor: 'rgba(10, 12, 10, 0.8)',
-      padding: { x: 12, y: 4 },
-    }).setOrigin(0.5).setDepth(100).setAlpha(0);
+    // Create new notification
+    const y = 60 + (this.notifications.length * 40);
+    const container = this.add.container(this.scale.width / 2, 20);
+    container.setAlpha(0);
 
-    // === GATHERING PROGRESS BAR ===
-    this.gatherBarBg = this.add.rectangle(w / 2, h - 90, 120, 8, 0x1a1c1a)
-      .setStrokeStyle(1, 0x2a2f2a).setDepth(100).setVisible(false);
+    const text = this.add.text(0, 0, message, {
+      fontSize: '14px',
+      fontFamily: 'IBM Plex Mono, monospace',
+      color: color,
+      stroke: '#000000',
+      strokeThickness: 3
+    }).setOrigin(0.5, 0.5);
 
-    this.gatherBarFill = this.add.rectangle(w / 2 - 58, h - 90, 0, 6, 0x4a8a4a)
-      .setOrigin(0, 0.5).setDepth(101).setVisible(false);
+    const padding = 10;
+    const bg = this.add.graphics();
+    bg.fillStyle(0x000000, 0.75);
+    bg.fillRoundedRect(
+      -text.width/2 - padding,
+      -text.height/2 - padding,
+      text.width + padding * 2,
+      text.height + padding * 2,
+      6
+    );
 
-    // === NOTIFICATION TEXT ===
-    this.notifText = this.add.text(w / 2, 60, '', {
-      fontFamily: 'Oswald, sans-serif', fontSize: '13px',
-      color: 'rgba(255, 255, 255, 0.85)', letterSpacing: 2,
-      backgroundColor: 'rgba(0, 0, 0, 0.5)',
-      padding: { x: 16, y: 6 },
-    }).setOrigin(0.5).setAlpha(0).setDepth(100);
+    container.add([bg, text]);
 
-    // === DEATH SCREEN ELEMENTS (hidden) ===
-    this.deathContainer = this.add.container(0, 0).setDepth(300).setVisible(false);
+    // Slide in from top
+    this.tweens.add({
+      targets: container,
+      y: y,
+      alpha: 1,
+      duration: 300,
+      ease: 'Back.easeOut'
+    });
 
-    const deathOverlay = this.add.rectangle(w / 2, h / 2, w, h, 0x0f0505, 0);
-    this.deathContainer.add(deathOverlay);
-    this.deathOverlay = deathOverlay;
+    const notification = { container, text, bg };
+    this.notifications.push(notification);
 
-    const deathTitle = this.add.text(w / 2, h / 2 - 60, 'YOU PERISHED', {
-      fontFamily: 'Oswald, sans-serif', fontSize: '52px', color: '#8a2020',
-      letterSpacing: 6,
-    }).setOrigin(0.5).setAlpha(0);
-    this.deathContainer.add(deathTitle);
-    this.deathTitle = deathTitle;
+    // Auto-fade after 3 seconds
+    this.time.delayedCall(3000, () => {
+      const index = this.notifications.indexOf(notification);
+      if (index !== -1) {
+        this.notifications.splice(index, 1);
 
-    this.deathCause = this.add.text(w / 2, h / 2, '', {
-      fontFamily: 'Inter, sans-serif', fontSize: '16px', color: '#aa6060',
-    }).setOrigin(0.5).setAlpha(0);
-    this.deathContainer.add(this.deathCause);
+        // Shift remaining notifications
+        this.notifications.forEach((notif, i) => {
+          this.tweens.add({
+            targets: notif.container,
+            y: 60 + (i * 40),
+            duration: 300,
+            ease: 'Power2'
+          });
+        });
+      }
 
-    this.deathSurvived = this.add.text(w / 2, h / 2 + 30, '', {
-      fontFamily: 'IBM Plex Mono, monospace', fontSize: '13px', color: '#886060',
-    }).setOrigin(0.5).setAlpha(0);
-    this.deathContainer.add(this.deathSurvived);
+      this.tweens.add({
+        targets: container,
+        alpha: 0,
+        duration: 300,
+        onComplete: () => container.destroy()
+      });
+    });
+  }
 
-    const tryAgain = this.add.text(w / 2, h / 2 + 80, 'TRY AGAIN', {
-      fontFamily: 'Oswald, sans-serif', fontSize: '18px', color: '#c44040',
-      backgroundColor: 'rgba(20, 8, 8, 0.8)',
-      padding: { x: 24, y: 10 },
-    }).setOrigin(0.5).setAlpha(0).setInteractive();
+  addMoodle(type, name, icon, color) {
+    // Check if moodle already exists
+    const existing = this.moodleIcons.find(m => m.type === type);
+    if (existing) return;
 
-    tryAgain.on('pointerover', () => tryAgain.setColor('#ff6060'));
-    tryAgain.on('pointerout', () => tryAgain.setColor('#c44040'));
-    tryAgain.on('pointerdown', () => {
+    const y = this.moodleIcons.length * 38;
+    const container = this.add.container(0, y);
+    container.setAlpha(0);
+
+    const bg = this.add.graphics();
+    bg.fillStyle(0x2a2a2a, 0.85);
+    bg.fillRoundedRect(-36, -16, 32, 32, 4);
+    bg.lineStyle(2, color, 0.9);
+    bg.strokeRoundedRect(-36, -16, 32, 32, 4);
+
+    const iconText = this.add.text(-20, 0, icon, {
+      fontSize: '18px'
+    }).setOrigin(0.5, 0.5);
+
+    container.add([bg, iconText]);
+    this.moodleContainer.add(container);
+
+    // Fade in
+    this.tweens.add({
+      targets: container,
+      alpha: 1,
+      duration: 300,
+      ease: 'Power2'
+    });
+
+    this.moodleIcons.push({ type, container, name });
+  }
+
+  removeMoodle(type) {
+    const index = this.moodleIcons.findIndex(m => m.type === type);
+    if (index === -1) return;
+
+    const moodle = this.moodleIcons[index];
+
+    // Fade out and remove
+    this.tweens.add({
+      targets: moodle.container,
+      alpha: 0,
+      duration: 300,
+      onComplete: () => {
+        moodle.container.destroy();
+      }
+    });
+
+    this.moodleIcons.splice(index, 1);
+
+    // Reposition remaining moodles
+    this.moodleIcons.forEach((m, i) => {
+      this.tweens.add({
+        targets: m.container,
+        y: i * 38,
+        duration: 300,
+        ease: 'Power2'
+      });
+    });
+  }
+
+  showDeathScreen(deathData) {
+    // Create full-screen overlay
+    const overlay = this.add.graphics();
+    overlay.fillStyle(0x440000, 0);
+    overlay.fillRect(0, 0, this.scale.width, this.scale.height);
+    overlay.setDepth(1000);
+
+    // Fade in overlay
+    this.tweens.add({
+      targets: overlay,
+      alpha: 0.85,
+      duration: 1500,
+      ease: 'Power2'
+    });
+
+    const centerX = this.scale.width / 2;
+    const centerY = this.scale.height / 2;
+
+    // "YOU PERISHED" text
+    const titleText = this.add.text(centerX, centerY - 80, 'YOU PERISHED', {
+      fontSize: '64px',
+      fontFamily: 'Oswald, sans-serif',
+      color: '#aa0000',
+      stroke: '#000000',
+      strokeThickness: 6
+    }).setOrigin(0.5, 0.5).setAlpha(0).setDepth(1001);
+
+    this.time.delayedCall(500, () => {
+      this.tweens.add({
+        targets: titleText,
+        alpha: 1,
+        duration: 1000,
+        ease: 'Power2'
+      });
+    });
+
+    // Death details
+    const causeText = this.add.text(centerX, centerY, `Cause: ${deathData.cause || 'Unknown'}`, {
+      fontSize: '20px',
+      fontFamily: 'IBM Plex Mono, monospace',
+      color: '#ffffff',
+      stroke: '#000000',
+      strokeThickness: 3
+    }).setOrigin(0.5, 0.5).setAlpha(0).setDepth(1001);
+
+    const daysText = this.add.text(centerX, centerY + 35, `Survived ${deathData.day || 1} days`, {
+      fontSize: '18px',
+      fontFamily: 'IBM Plex Mono, monospace',
+      color: '#cccccc',
+      stroke: '#000000',
+      strokeThickness: 3
+    }).setOrigin(0.5, 0.5).setAlpha(0).setDepth(1001);
+
+    const timeText = this.add.text(centerX, centerY + 60, `Total time: ${Math.floor((deathData.playTime || 0) / 60)} minutes`, {
+      fontSize: '16px',
+      fontFamily: 'IBM Plex Mono, monospace',
+      color: '#aaaaaa',
+      stroke: '#000000',
+      strokeThickness: 3
+    }).setOrigin(0.5, 0.5).setAlpha(0).setDepth(1001);
+
+    this.time.delayedCall(1000, () => {
+      this.tweens.add({
+        targets: [causeText, daysText, timeText],
+        alpha: 1,
+        duration: 800,
+        ease: 'Power2'
+      });
+    });
+
+    // Try Again button
+    const buttonBg = this.add.graphics();
+    buttonBg.fillStyle(0x880000, 0.9);
+    buttonBg.fillRoundedRect(centerX - 100, centerY + 110, 200, 50, 8);
+    buttonBg.lineStyle(2, 0xff0000, 0.8);
+    buttonBg.strokeRoundedRect(centerX - 100, centerY + 110, 200, 50, 8);
+    buttonBg.setAlpha(0).setDepth(1001).setInteractive(
+      new Phaser.Geom.Rectangle(centerX - 100, centerY + 110, 200, 50),
+      Phaser.Geom.Rectangle.Contains
+    );
+
+    const buttonText = this.add.text(centerX, centerY + 135, 'TRY AGAIN', {
+      fontSize: '20px',
+      fontFamily: 'Oswald, sans-serif',
+      color: '#ffffff',
+      stroke: '#000000',
+      strokeThickness: 3
+    }).setOrigin(0.5, 0.5).setAlpha(0).setDepth(1002);
+
+    this.time.delayedCall(1500, () => {
+      this.tweens.add({
+        targets: [buttonBg, buttonText],
+        alpha: 1,
+        duration: 600,
+        ease: 'Power2'
+      });
+    });
+
+    // Button hover effect
+    buttonBg.on('pointerover', () => {
+      buttonBg.clear();
+      buttonBg.fillStyle(0xaa0000, 1);
+      buttonBg.fillRoundedRect(centerX - 100, centerY + 110, 200, 50, 8);
+      buttonBg.lineStyle(2, 0xff4444, 1);
+      buttonBg.strokeRoundedRect(centerX - 100, centerY + 110, 200, 50, 8);
+    });
+
+    buttonBg.on('pointerout', () => {
+      buttonBg.clear();
+      buttonBg.fillStyle(0x880000, 0.9);
+      buttonBg.fillRoundedRect(centerX - 100, centerY + 110, 200, 50, 8);
+      buttonBg.lineStyle(2, 0xff0000, 0.8);
+      buttonBg.strokeRoundedRect(centerX - 100, centerY + 110, 200, 50, 8);
+    });
+
+    // Button click - return to menu
+    buttonBg.on('pointerdown', () => {
       this.scene.stop('UIScene');
       this.scene.stop('GameScene');
       this.scene.start('MenuScene');
     });
 
-    this.deathContainer.add(tryAgain);
-    this.tryAgainBtn = tryAgain;
+    this.deathScreen = {
+      overlay,
+      titleText,
+      causeText,
+      daysText,
+      timeText,
+      buttonBg,
+      buttonText
+    };
+  }
 
-    // === INVENTORY UI ===
-    this.inventoryUI = new InventoryUI(
-      this, this.gameState, this.gameEvents, this.inventorySystem
-    );
-    this.inventoryUI.create();
+  setupEventListeners() {
+    if (!this.gameEvents) return;
 
-    // === CRAFTING UI ===
-    this.craftingUI = new CraftingUI(
-      this, this.gameState, this.gameEvents, this.craftingSystem
-    );
-    this.craftingUI.create();
-
-    // === MOODLE STATUS ICONS (right side) ===
-    this.moodleIcons = [];
-    this.moodleContainer = this.add.container(w - 40, 80).setDepth(100);
-
-    // === EVENT LISTENERS ===
-    if (this.gameEvents) {
-      // Stat changes
-      this.gameEvents.on('stat:changed', (stats) => {
-        this.updateStatBars(stats);
-      });
-
-      // Notifications
-      this.gameEvents.on('game:saved', () => this.showNotification('Game Saved'));
-      this.gameEvents.on('item:added', (data) => this.showNotification(`+${data.quantity} ${data.name}`));
-      this.gameEvents.on('skill:levelup', (data) => this.showNotification(`${data.skill} leveled up!`));
-      this.gameEvents.on('item:broken', (data) => {
-        this.showNotification(`${data.name || data.itemId} broke!`);
-      });
-
-      // Combat notifications
-      this.gameEvents.on('combat:playerHit', (data) => {
-        this.showNotification(`Hit! -${data.damage} HP`);
-      });
-      this.gameEvents.on('injury:added', (data) => {
-        this.showNotification(`${data.name}!`);
-      });
-      this.gameEvents.on('injury:treated', (data) => {
-        this.showNotification(`Treated ${data.type}`);
-      });
-      this.gameEvents.on('animal:died', (data) => {
-        this.showNotification(`${data.type} killed`);
-      });
-
-      // Moodle system
-      this.gameEvents.on('moodle:added', (data) => {
-        this.addMoodleIcon(data);
-      });
-      this.gameEvents.on('moodle:removed', (data) => {
-        this.removeMoodleIcon(data.type);
-      });
-
-      // Interaction prompt
-      this.gameEvents.on('interaction:nearest', (target) => {
-        if (target) {
-          let text = '[E] Interact';
-          switch (target.type) {
-            case 'tree': text = '[E] Chop Tree'; break;
-            case 'rock': text = '[E] Mine Rock'; break;
-            case 'bush': text = '[E] Forage Bush'; break;
-            case 'water': text = '[E] Collect Water'; break;
-            case 'campfire': text = '[E] Use Campfire'; break;
-            case 'carcass': text = '[E] Harvest Carcass'; break;
-          }
-          this.interactPrompt.setText(text).setAlpha(1);
-        } else {
-          this.interactPrompt.setAlpha(0);
-        }
-      });
-
-      // Gathering progress
-      this.gameEvents.on('gathering:started', () => {
-        this.gatherBarBg.setVisible(true);
-        this.gatherBarFill.setVisible(true);
-        this.gatherBarFill.width = 0;
-      });
-      this.gameEvents.on('gathering:progress', (data) => {
-        this.gatherBarFill.width = 116 * data.progress;
-      });
-      this.gameEvents.on('gathering:complete', () => {
-        this.gatherBarBg.setVisible(false);
-        this.gatherBarFill.setVisible(false);
-      });
-      this.gameEvents.on('gathering:cancelled', () => {
-        this.gatherBarBg.setVisible(false);
-        this.gatherBarFill.setVisible(false);
-      });
-
-      // Death
-      this.gameEvents.on('player:died', (data) => {
-        this.showDeathScreen(data.cause);
-      });
-
-      // Hotbar selection
-      this.gameEvents.on('hotbar:select', (data) => {
-        this.activeHotbarSlot = data.slot;
-        this.updateHotbar();
-      });
-
-      // Weather display (optional)
-      this.gameEvents.on('weather:changed', (data) => {
-        const weatherNames = {
-          clear: 'Clear', cloudy: 'Cloudy', rain: 'Rain',
-          heavy_rain: 'Heavy Rain', wind: 'Windy', storm: 'Storm', snow: 'Snow',
-        };
-        this.showNotification(weatherNames[data.weather] || data.weather);
-      });
-    }
-
-    // Keyboard toggles for inventory and crafting
-    this.input.keyboard.on('keydown-I', () => {
-      if (this.craftingUI.visible) this.craftingUI.toggle();
-      this.inventoryUI.toggle();
+    this.gameEvents.on('stat:changed', (stats) => {
+      if (stats.health !== undefined) this.updateStatBar('health', stats.health);
+      if (stats.hunger !== undefined) this.updateStatBar('hunger', stats.hunger);
+      if (stats.thirst !== undefined) this.updateStatBar('thirst', stats.thirst);
+      if (stats.fatigue !== undefined) this.updateStatBar('fatigue', stats.fatigue);
     });
+
+    this.gameEvents.on('game:saved', () => {
+      this.addNotification('Game Saved', '#44ff88');
+    });
+
+    this.gameEvents.on('item:added', (data) => {
+      this.addNotification(`+${data.quantity} ${data.name}`, '#ffffff');
+    });
+
+    this.gameEvents.on('skill:levelup', (data) => {
+      this.addNotification(`${data.skill} Level Up!`, '#ffcc44');
+    });
+
+    this.gameEvents.on('item:broken', (data) => {
+      this.addNotification(`${data.name} broke!`, '#ff8844');
+    });
+
+    this.gameEvents.on('combat:playerHit', (data) => {
+      this.addNotification(`-${data.damage} HP`, '#ff4444');
+    });
+
+    this.gameEvents.on('injury:added', (data) => {
+      this.addNotification(`Injury: ${data.name}`, '#ff8844');
+    });
+
+    this.gameEvents.on('injury:treated', (data) => {
+      this.addNotification(`Treated ${data.type}`, '#44ff88');
+    });
+
+    this.gameEvents.on('animal:died', (data) => {
+      this.addNotification(`Killed ${data.type}`, '#ffcc44');
+    });
+
+    this.gameEvents.on('moodle:added', (data) => {
+      this.addMoodle(data.type, data.name, data.icon, data.color);
+    });
+
+    this.gameEvents.on('moodle:removed', (data) => {
+      this.removeMoodle(data.type);
+    });
+
+    this.gameEvents.on('interaction:nearest', (target) => {
+      if (target && target.type) {
+        const actionMap = {
+          tree: 'Chop Tree',
+          rock: 'Mine Rock',
+          bush: 'Gather Berries',
+          water: 'Collect Water',
+          campfire: 'Use Campfire',
+          carcass: 'Harvest Carcass'
+        };
+        const action = actionMap[target.type] || 'Interact';
+        this.showInteractionPrompt(`[E] ${action}`);
+      } else {
+        this.hideInteractionPrompt();
+      }
+    });
+
+    this.gameEvents.on('gathering:started', () => {
+      this.showGatheringBar();
+    });
+
+    this.gameEvents.on('gathering:progress', (data) => {
+      const actionMap = {
+        tree: 'Chopping Tree...',
+        rock: 'Mining Rock...',
+        bush: 'Gathering...',
+        water: 'Collecting Water...',
+        carcass: 'Harvesting...'
+      };
+      const label = actionMap[data.type] || 'Gathering...';
+      this.updateGatheringBar(data.progress, label);
+    });
+
+    this.gameEvents.on('gathering:complete', () => {
+      this.hideGatheringBar();
+    });
+
+    this.gameEvents.on('gathering:cancelled', () => {
+      this.hideGatheringBar();
+    });
+
+    this.gameEvents.on('player:died', (data) => {
+      this.showDeathScreen(data);
+    });
+
+    this.gameEvents.on('hotbar:select', (data) => {
+      if (this.gameState && this.gameState.inventory) {
+        this.gameState.inventory.selectedSlot = data.slot;
+        this.updateHotbar();
+      }
+    });
+
+    this.gameEvents.on('weather:changed', (data) => {
+      this.updateWeather(data.weather, data.temperature);
+    });
+  }
+
+  setupKeyboardInput() {
+    this.input.keyboard.on('keydown-I', () => {
+      this.toggleInventory();
+    });
+
     this.input.keyboard.on('keydown-TAB', (e) => {
       e.preventDefault();
-      if (this.craftingUI.visible) this.craftingUI.toggle();
-      this.inventoryUI.toggle();
-    });
-    this.input.keyboard.on('keydown-C', () => {
-      if (this.inventoryUI.visible) this.inventoryUI.toggle();
-      this.craftingUI.toggle();
-    });
-    this.input.keyboard.on('keydown-ESC', () => {
-      if (this.inventoryUI.visible) this.inventoryUI.toggle();
-      if (this.craftingUI.visible) this.craftingUI.toggle();
+      this.toggleInventory();
     });
 
-    console.log('REMNANT UIScene initialized');
+    this.input.keyboard.on('keydown-C', () => {
+      this.toggleCrafting();
+    });
+
+    this.input.keyboard.on('keydown-ESC', () => {
+      if (this.inventoryUI && this.inventoryUI.visible) {
+        this.inventoryUI.toggle();
+        this.gameEvents.emit('ui:panelClosed');
+      }
+      if (this.craftingUI && this.craftingUI.isVisible) {
+        this.craftingUI.toggle();
+        this.gameEvents.emit('ui:panelClosed');
+      }
+    });
+  }
+
+  toggleInventory() {
+    if (!this.inventoryUI) return;
+
+    // Close crafting if open
+    if (this.craftingUI && this.craftingUI.isVisible) {
+      this.craftingUI.toggle();
+    }
+
+    this.inventoryUI.toggle();
+
+    if (this.inventoryUI.visible) {
+      this.gameEvents.emit('ui:panelOpen');
+    } else {
+      this.gameEvents.emit('ui:panelClosed');
+    }
+  }
+
+  toggleCrafting() {
+    if (!this.craftingUI) return;
+
+    // Close inventory if open
+    if (this.inventoryUI && this.inventoryUI.visible) {
+      this.inventoryUI.toggle();
+    }
+
+    this.craftingUI.toggle();
+
+    if (this.craftingUI.isVisible) {
+      this.gameEvents.emit('ui:panelOpen');
+    } else {
+      this.gameEvents.emit('ui:panelClosed');
+    }
+  }
+
+  setupResizeHandler() {
+    this.scale.on('resize', this.handleResize, this);
+  }
+
+  handleResize(gameSize) {
+    const { width, height } = gameSize;
+
+    // Reposition stat bars (bottom-left)
+    const startY = height - 120;
+    Object.values(this.statBars).forEach((bar, index) => {
+      bar.container.setPosition(20, startY + (index * 22));
+    });
+
+    // Reposition time/weather display (top-right)
+    if (this.timeDisplay) {
+      this.timeDisplay.container.setPosition(width - 20, 20);
+    }
+
+    // Reposition hotbar (bottom-center)
+    const slotSize = 50;
+    const gap = 4;
+    const totalWidth = (slotSize * 6) + (gap * 5);
+    const startX = (width / 2) - (totalWidth / 2);
+    this.hotbarSlots.forEach((slot, index) => {
+      slot.container.setPosition(startX + (index * (slotSize + gap)), height - 80);
+    });
+
+    // Reposition interaction prompt
+    if (this.interactionPrompt) {
+      this.interactionPrompt.container.setPosition(width / 2, height - 120);
+    }
+
+    // Reposition gathering bar
+    if (this.gatheringBar) {
+      this.gatheringBar.container.setPosition(width / 2, height - 140);
+    }
+
+    // Reposition moodle container
+    if (this.moodleContainer) {
+      this.moodleContainer.setPosition(width - 20, 130);
+    }
+
+    // Reposition death screen if visible
+    if (this.deathScreen) {
+      const centerX = width / 2;
+      const centerY = height / 2;
+
+      this.deathScreen.overlay.clear();
+      this.deathScreen.overlay.fillStyle(0x440000, 0.85);
+      this.deathScreen.overlay.fillRect(0, 0, width, height);
+
+      this.deathScreen.titleText.setPosition(centerX, centerY - 80);
+      this.deathScreen.causeText.setPosition(centerX, centerY);
+      this.deathScreen.daysText.setPosition(centerX, centerY + 35);
+      this.deathScreen.timeText.setPosition(centerX, centerY + 60);
+
+      this.deathScreen.buttonBg.setPosition(centerX - 100, centerY + 110);
+      this.deathScreen.buttonText.setPosition(centerX, centerY + 135);
+    }
+  }
+
+  updateWeather(weather, temperature) {
+    if (!this.timeDisplay) return;
+
+    const weatherIcons = {
+      clear: '☀️',
+      cloudy: '☁️',
+      rain: '🌧️',
+      heavy_rain: '🌧️',
+      snow: '❄️',
+      wind: '💨',
+      storm: '⛈️'
+    };
+
+    const weatherNames = {
+      clear: 'Clear',
+      cloudy: 'Cloudy',
+      rain: 'Rain',
+      heavy_rain: 'Heavy Rain',
+      snow: 'Snow',
+      wind: 'Windy',
+      storm: 'Storm'
+    };
+
+    this.timeDisplay.weatherIcon.setText(weatherIcons[weather] || '☀️');
+    this.timeDisplay.weatherText.setText(weatherNames[weather] || 'Clear');
+    this.timeDisplay.tempText.setText(`${Math.round(temperature)}°F`);
   }
 
   update(time, delta) {
-    if (!this.gameState) return;
-
     // Update time display
-    this.dayText.setText(`Day ${this.gameState.time.day}`);
-    this.timeText.setText(formatTime(this.gameState.time.hour));
-    const seasonName = this.gameState.time.season.charAt(0).toUpperCase()
-      + this.gameState.time.season.slice(1);
-    this.seasonText.setText(seasonName);
+    if (this.gameState && this.timeDisplay) {
+      const day = this.gameState.time?.day || 1;
+      const currentTime = formatTime(this.gameState.time?.hour ?? 6);
+      const season = this.gameState.time?.season || 'Summer';
+
+      this.timeDisplay.dayText.setText(`Day ${day}`);
+      this.timeDisplay.timeText.setText(currentTime);
+      this.timeDisplay.seasonText.setText(season);
+    }
 
     // Update hotbar
     this.updateHotbar();
-  }
 
-  updateStatBars(stats) {
-    for (const [key, bar] of Object.entries(this.statBars)) {
-      const val = stats[key] !== undefined ? stats[key] : 0;
-      const pct = Math.max(0, Math.min(100, val)) / 100;
-
-      bar.fill.width = (BAR_W - 2) * pct;
-      bar.value.setText(Math.round(val));
-
-      // Color warning states
-      if (key === 'health') {
-        if (val < 15) {
-          // Blink effect
-          bar.fill.setFillStyle(0xff2020, Math.sin(Date.now() * 0.008) * 0.3 + 0.7);
-        } else if (val < 30) {
-          bar.fill.setFillStyle(0xd43030);
-        } else {
-          bar.fill.setFillStyle(bar.baseColor);
-        }
+    // Health bar pulse effect when low
+    if (this.statBars.health && this.statBars.health.value < 15) {
+      this.statBars.health.pulseTimer += delta;
+      if (this.statBars.health.pulseTimer > 500) {
+        this.statBars.health.pulseTimer = 0;
+        const currentAlpha = this.statBars.health.fillGraphics.alpha;
+        this.tweens.add({
+          targets: this.statBars.health.fillGraphics,
+          alpha: currentAlpha > 0.7 ? 0.4 : 1,
+          duration: 250,
+          ease: 'Sine.easeInOut'
+        });
       }
     }
-  }
-
-  updateHotbar() {
-    const hotbar = this.gameState.inventory.hotbar;
-
-    for (let i = 0; i < 6; i++) {
-      const slot = this.hotbarSlots[i];
-      const itemId = hotbar[i];
-
-      // Highlight active slot
-      if (i === this.activeHotbarSlot) {
-        slot.bg.setStrokeStyle(2, 0x8a8a40);
-      } else {
-        slot.bg.setStrokeStyle(1, 0x2a2f2a);
-      }
-
-      if (itemId && ITEMS[itemId]) {
-        const itemDef = ITEMS[itemId];
-        slot.icon.setText(itemDef.icon);
-
-        // Count from inventory
-        let total = 0;
-        for (const s of this.gameState.inventory.slots) {
-          if (s.itemId === itemId) total += s.quantity;
-        }
-        slot.count.setText(total > 0 ? String(total) : '');
-
-        // Clear if no longer in inventory
-        if (total === 0) {
-          hotbar[i] = null;
-          slot.icon.setText('');
-          slot.count.setText('');
-        }
-      } else {
-        slot.icon.setText('');
-        slot.count.setText('');
-      }
-    }
-  }
-
-  showDeathScreen(cause) {
-    const w = this.cameras.main.width;
-
-    this.deathContainer.setVisible(true);
-
-    // Fade in overlay
-    this.tweens.add({
-      targets: this.deathOverlay,
-      fillAlpha: 0.9,
-      duration: 1500,
-    });
-
-    // Fade in title
-    this.tweens.add({
-      targets: this.deathTitle,
-      alpha: 1,
-      delay: 500,
-      duration: 1000,
-    });
-
-    // Show cause
-    this.deathCause.setText(`Cause: ${cause}`);
-    this.tweens.add({
-      targets: this.deathCause,
-      alpha: 1,
-      delay: 1200,
-      duration: 800,
-    });
-
-    // Show survival stats
-    const days = this.gameState.time.day;
-    this.deathSurvived.setText(`Survived ${days} day${days !== 1 ? 's' : ''}`);
-    this.tweens.add({
-      targets: this.deathSurvived,
-      alpha: 1,
-      delay: 1600,
-      duration: 800,
-    });
-
-    // Show try again button
-    this.tweens.add({
-      targets: this.tryAgainBtn,
-      alpha: 1,
-      delay: 2200,
-      duration: 600,
-    });
-  }
-
-  showNotification(text) {
-    this.notifText.setText(text).setAlpha(1);
-    this.tweens.add({
-      targets: this.notifText,
-      alpha: 0,
-      delay: 2000,
-      duration: 500,
-    });
-  }
-
-  addMoodleIcon(data) {
-    // Avoid duplicates
-    if (this.moodleIcons.find(m => m.type === data.type)) return;
-
-    const idx = this.moodleIcons.length;
-    const y = idx * 28;
-
-    const bg = this.add.rectangle(0, y, 28, 24, 0x0a0c0a, 0.85)
-      .setStrokeStyle(1, Phaser.Display.Color.HexStringToColor(data.color).color);
-
-    const icon = this.add.text(0, y, data.icon, {
-      fontSize: '14px',
-    }).setOrigin(0.5);
-
-    this.moodleContainer.add(bg);
-    this.moodleContainer.add(icon);
-
-    this.moodleIcons.push({ type: data.type, bg, icon });
-  }
-
-  removeMoodleIcon(type) {
-    const idx = this.moodleIcons.findIndex(m => m.type === type);
-    if (idx < 0) return;
-
-    const moodle = this.moodleIcons[idx];
-    moodle.bg.destroy();
-    moodle.icon.destroy();
-    this.moodleIcons.splice(idx, 1);
-
-    // Reposition remaining moodles
-    this.moodleIcons.forEach((m, i) => {
-      const y = i * 28;
-      m.bg.setY(y);
-      m.icon.setY(y);
-    });
   }
 }

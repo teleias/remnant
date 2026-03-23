@@ -1,5 +1,5 @@
 // Programmatic texture generation utilities for REMNANT
-// Generates PZ-quality isometric tiles, object sprites, and character sprites
+// Project Zomboid-quality isometric tiles, object sprites, and character sprites
 // All textures are created on Phaser canvas textures at runtime
 
 import { TILE } from '../config/constants.js';
@@ -7,6 +7,17 @@ import { SimplexNoise } from './noise.js';
 
 const HALF_W = TILE.HALF_W;
 const HALF_H = TILE.HALF_H;
+
+// Mulberry32 seeded RNG for deterministic random generation
+function mulberry32(seed) {
+  let s = seed;
+  return function() {
+    s = s + 0x6D2B79F5 | 0;
+    let t = Math.imul(s ^ s >>> 15, 1 | s);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
 
 // Check if a pixel is inside the isometric diamond
 function insideDiamond(px, py) {
@@ -33,7 +44,7 @@ function lerpColor(c1, c2, t) {
 }
 
 // Draw the isometric diamond outline + fill
-function drawDiamond(ctx, fillColor, strokeColor) {
+function drawDiamond(ctx, fillColor, strokeColor = null) {
   ctx.beginPath();
   ctx.moveTo(HALF_W, 0);
   ctx.lineTo(TILE.WIDTH, HALF_H);
@@ -49,8 +60,8 @@ function drawDiamond(ctx, fillColor, strokeColor) {
   }
 }
 
-// Fill diamond with simplex noise variation for natural look
-function fillWithNoise(ctx, baseColor, noise, seed, scale, intensity) {
+// Advanced multi-layer noise fill with isometric shading
+function fillWithAdvancedNoise(ctx, baseColor, noise, seed, variant) {
   const base = hexToRgb(baseColor);
   const imgData = ctx.getImageData(0, 0, TILE.WIDTH, TILE.HEIGHT);
   const data = imgData.data;
@@ -61,151 +72,285 @@ function fillWithNoise(ctx, baseColor, noise, seed, scale, intensity) {
       const idx = (py * TILE.WIDTH + px) * 4;
       if (data[idx + 3] === 0) continue;
 
-      const n = noise.noise2D((px + seed) * scale, (py + seed) * scale);
-      const variation = n * intensity;
+      // Multi-octave noise for organic texture
+      const n1 = noise.noise2D((px + seed) * 0.08, (py + seed) * 0.08);
+      const n2 = noise.noise2D((px + seed * 2) * 0.15, (py + seed * 2) * 0.15) * 0.5;
+      const n3 = noise.noise2D((px + seed * 3) * 0.3, (py + seed * 3) * 0.3) * 0.25;
+      const noise_combined = (n1 + n2 + n3) / 1.75;
 
-      data[idx] = Math.max(0, Math.min(255, base.r + variation * 30));
-      data[idx + 1] = Math.max(0, Math.min(255, base.g + variation * 25));
-      data[idx + 2] = Math.max(0, Math.min(255, base.b + variation * 20));
+      // Isometric shading: left face lighter, right face darker
+      const dx = px - HALF_W;
+      const dy = py - HALF_H;
+      const leftFace = dx < 0 && Math.abs(dy / HALF_H) < Math.abs(dx / HALF_W);
+      const rightFace = dx > 0 && Math.abs(dy / HALF_H) < Math.abs(dx / HALF_W);
+
+      let shadingBoost = 0;
+      if (leftFace) shadingBoost = 8;
+      if (rightFace) shadingBoost = -8;
+
+      // Apply noise and shading
+      const variation = noise_combined * 25 + shadingBoost;
+      data[idx] = Math.max(0, Math.min(255, base.r + variation));
+      data[idx + 1] = Math.max(0, Math.min(255, base.g + variation));
+      data[idx + 2] = Math.max(0, Math.min(255, base.b + variation));
     }
   }
   ctx.putImageData(imgData, 0, 0);
 }
 
-// Add scattered detail dots (pebbles, grass blades, etc)
-function addDetails(ctx, color, count, rng) {
-  ctx.fillStyle = color;
+// Add scattered detail dots (grass blades, pebbles, etc)
+function addScatteredDetails(ctx, colors, count, rng, sizeRange = [0.5, 2]) {
   for (let i = 0; i < count; i++) {
-    const px = HALF_W + (rng() - 0.5) * TILE.WIDTH * 0.65;
-    const py = HALF_H + (rng() - 0.5) * TILE.HEIGHT * 0.45;
+    const px = HALF_W + (rng() - 0.5) * TILE.WIDTH * 0.7;
+    const py = HALF_H + (rng() - 0.5) * TILE.HEIGHT * 0.5;
     if (!insideDiamond(px, py)) continue;
-    const size = 0.5 + rng() * 1.5;
-    ctx.fillRect(px, py, size, size);
+
+    const colorChoice = Array.isArray(colors)
+      ? colors[Math.floor(rng() * colors.length)]
+      : colors;
+    ctx.fillStyle = colorChoice;
+
+    const size = sizeRange[0] + rng() * (sizeRange[1] - sizeRange[0]);
+    ctx.fillRect(Math.floor(px), Math.floor(py), Math.ceil(size), Math.ceil(size));
+  }
+}
+
+// Add crack lines for stone textures
+function addCracks(ctx, noise, seed, count, rng) {
+  ctx.strokeStyle = 'rgba(30, 30, 25, 0.4)';
+  ctx.lineWidth = 0.5;
+
+  for (let i = 0; i < count; i++) {
+    const startX = HALF_W + (rng() - 0.5) * TILE.WIDTH * 0.5;
+    const startY = HALF_H + (rng() - 0.5) * TILE.HEIGHT * 0.3;
+    const length = 8 + rng() * 12;
+    const angle = rng() * Math.PI * 2;
+
+    ctx.beginPath();
+    ctx.moveTo(startX, startY);
+
+    // Jagged crack line
+    let cx = startX, cy = startY;
+    for (let j = 0; j < 3; j++) {
+      cx += Math.cos(angle) * (length / 3) + (rng() - 0.5) * 3;
+      cy += Math.sin(angle) * (length / 3) + (rng() - 0.5) * 3;
+      ctx.lineTo(cx, cy);
+    }
+    ctx.stroke();
+  }
+}
+
+// Add water ripples
+function addWaterRipples(ctx, variant) {
+  ctx.strokeStyle = 'rgba(140, 200, 240, 0.15)';
+  ctx.lineWidth = 0.5;
+
+  for (let i = 0; i < 4; i++) {
+    const y = HALF_H * 0.4 + i * 5 + variant * 2;
+    const amplitude = 2 + i * 0.5;
+
+    ctx.beginPath();
+    ctx.moveTo(HALF_W * 0.3, y);
+    ctx.quadraticCurveTo(HALF_W, y - amplitude, HALF_W * 1.7, y);
+    ctx.stroke();
+  }
+
+  // Add shimmer dots
+  ctx.fillStyle = 'rgba(200, 230, 255, 0.2)';
+  const rng = mulberry32(variant * 999);
+  for (let i = 0; i < 8; i++) {
+    const px = HALF_W + (rng() - 0.5) * TILE.WIDTH * 0.6;
+    const py = HALF_H + (rng() - 0.5) * TILE.HEIGHT * 0.4;
+    if (insideDiamond(px, py)) {
+      ctx.fillRect(px, py, 1, 1);
+    }
   }
 }
 
 // Generate all tile textures with variants
 export function generateTileset(scene) {
   const noise = new SimplexNoise(42);
-
-  const tileConfigs = {
-    grass: {
-      variants: 3,
-      fills: ['#4a6a32', '#436228', '#4e7036'],
-      stroke: '#3a5222',
-      noiseScale: 0.15,
-      noiseIntensity: 1.2,
-      details: { color: 'rgba(60,100,40,0.4)', count: 15 },
-    },
-    grass_dark: {
-      variants: 3,
-      fills: ['#365a22', '#2e5018', '#3c6228'],
-      stroke: '#264a12',
-      noiseScale: 0.12,
-      noiseIntensity: 1.0,
-      details: { color: 'rgba(30,60,20,0.5)', count: 12 },
-    },
-    dirt: {
-      variants: 3,
-      fills: ['#7a6a4a', '#6e5e3e', '#847050'],
-      stroke: '#5a4a2a',
-      noiseScale: 0.18,
-      noiseIntensity: 1.5,
-      details: { color: 'rgba(90,70,40,0.3)', count: 10 },
-    },
-    stone: {
-      variants: 2,
-      fills: ['#7a7a72', '#6e6e68'],
-      stroke: '#5a5a55',
-      noiseScale: 0.2,
-      noiseIntensity: 2.0,
-      details: { color: 'rgba(100,100,90,0.3)', count: 8 },
-    },
-    sand: {
-      variants: 2,
-      fills: ['#c4b078', '#baa86e'],
-      stroke: '#a49058',
-      noiseScale: 0.1,
-      noiseIntensity: 0.8,
-      details: { color: 'rgba(180,160,100,0.2)', count: 6 },
-    },
-    water: {
-      variants: 3,
-      fills: ['#2a6080', '#265878', '#2e6888'],
-      stroke: '#1a4a60',
-      noiseScale: 0.08,
-      noiseIntensity: 0.6,
-      details: null,
-      wave: true,
-    },
-    water_deep: {
-      variants: 2,
-      fills: ['#1a4060', '#163858'],
-      stroke: '#0a2a40',
-      noiseScale: 0.06,
-      noiseIntensity: 0.4,
-      details: null,
-      wave: true,
-    },
-    snow: {
-      variants: 2,
-      fills: ['#dde8ee', '#d4e0e8'],
-      stroke: '#c0d0da',
-      noiseScale: 0.1,
-      noiseIntensity: 0.5,
-      details: { color: 'rgba(200,220,240,0.3)', count: 8 },
-    },
-    road: {
-      variants: 2,
-      fills: ['#4a4a44', '#424240'],
-      stroke: '#3a3a35',
-      noiseScale: 0.15,
-      noiseIntensity: 1.0,
-      details: { color: 'rgba(60,60,55,0.3)', count: 6 },
-    },
-  };
-
   const rng = mulberry32(12345);
 
-  for (const [name, cfg] of Object.entries(tileConfigs)) {
-    for (let v = 0; v < cfg.variants; v++) {
-      const texName = `tile_${name}_${v}`;
-      const canvas = scene.textures.createCanvas(texName, TILE.WIDTH, TILE.HEIGHT);
-      const ctx = canvas.context;
+  // GRASS TILES (3 variants)
+  const grassColors = ['#4a6a32', '#456228', '#4e7038'];
+  for (let v = 0; v < 3; v++) {
+    const texName = `tile_grass_${v}`;
+    const canvas = scene.textures.createCanvas(texName, TILE.WIDTH, TILE.HEIGHT);
+    const ctx = canvas.context;
 
-      drawDiamond(ctx, cfg.fills[v % cfg.fills.length], cfg.stroke);
-      fillWithNoise(ctx, cfg.fills[v % cfg.fills.length], noise, v * 1000, cfg.noiseScale, cfg.noiseIntensity);
+    drawDiamond(ctx, grassColors[v], '#3a5222');
+    fillWithAdvancedNoise(ctx, grassColors[v], noise, v * 1000, v);
 
-      if (cfg.details) {
-        addDetails(ctx, cfg.details.color, cfg.details.count, rng);
-      }
+    // Grass blade details - multiple shades
+    addScatteredDetails(ctx, [
+      'rgba(60, 100, 40, 0.5)',
+      'rgba(50, 90, 35, 0.4)',
+      'rgba(70, 110, 45, 0.3)',
+      'rgba(40, 80, 30, 0.6)'
+    ], 18 + v * 2, rng, [0.5, 1.5]);
 
-      if (cfg.wave) {
-        ctx.strokeStyle = 'rgba(120,180,220,0.15)';
-        ctx.lineWidth = 0.5;
-        for (let i = 0; i < 3; i++) {
-          const y = HALF_H * 0.5 + i * 6 + v * 2;
-          ctx.beginPath();
-          ctx.moveTo(HALF_W * 0.4, y);
-          ctx.quadraticCurveTo(HALF_W, y - 2 + i, HALF_W * 1.6, y);
-          ctx.stroke();
-        }
-      }
-
-      canvas.refresh();
-    }
+    canvas.refresh();
   }
 
-  // Also generate legacy single-name textures for compatibility
-  const legacyMap = {
-    tile_grass: 'tile_grass_0', tile_grass_dark: 'tile_grass_dark_0',
-    tile_dirt: 'tile_dirt_0', tile_stone: 'tile_stone_0',
-    tile_sand: 'tile_sand_0', tile_water: 'tile_water_0',
-    tile_water_deep: 'tile_water_deep_0', tile_snow: 'tile_snow_0',
-    tile_road: 'tile_road_0',
-  };
-  // Phaser doesn't support texture aliases easily, so we skip this
-  // The TileMap will use the variant naming directly
+  // GRASS DARK TILES (3 variants)
+  const grassDarkColors = ['#365a22', '#2e5018', '#3c6228'];
+  for (let v = 0; v < 3; v++) {
+    const texName = `tile_grass_dark_${v}`;
+    const canvas = scene.textures.createCanvas(texName, TILE.WIDTH, TILE.HEIGHT);
+    const ctx = canvas.context;
+
+    drawDiamond(ctx, grassDarkColors[v], '#264a12');
+    fillWithAdvancedNoise(ctx, grassDarkColors[v], noise, v * 2000, v);
+
+    addScatteredDetails(ctx, [
+      'rgba(30, 60, 20, 0.6)',
+      'rgba(25, 55, 18, 0.5)',
+      'rgba(35, 65, 22, 0.4)'
+    ], 15 + v * 2, rng, [0.5, 1.2]);
+
+    canvas.refresh();
+  }
+
+  // DIRT TILES (3 variants)
+  const dirtColors = ['#7a6a4a', '#6e5e3e', '#847050'];
+  for (let v = 0; v < 3; v++) {
+    const texName = `tile_dirt_${v}`;
+    const canvas = scene.textures.createCanvas(texName, TILE.WIDTH, TILE.HEIGHT);
+    const ctx = canvas.context;
+
+    drawDiamond(ctx, dirtColors[v], '#5a4a2a');
+    fillWithAdvancedNoise(ctx, dirtColors[v], noise, v * 3000, v);
+
+    // Pebble details
+    addScatteredDetails(ctx, [
+      'rgba(90, 70, 40, 0.4)',
+      'rgba(100, 80, 50, 0.3)',
+      'rgba(80, 60, 35, 0.5)'
+    ], 12 + v * 2, rng, [0.8, 2.5]);
+
+    // Subtle wear lines
+    ctx.strokeStyle = 'rgba(100, 80, 50, 0.15)';
+    ctx.lineWidth = 0.5;
+    for (let i = 0; i < 2; i++) {
+      const y = HALF_H + (rng() - 0.5) * HALF_H;
+      ctx.beginPath();
+      ctx.moveTo(HALF_W * 0.4, y);
+      ctx.lineTo(HALF_W * 1.6, y);
+      ctx.stroke();
+    }
+
+    canvas.refresh();
+  }
+
+  // STONE TILES (2 variants)
+  const stoneColors = ['#7a7a72', '#6e6e68'];
+  for (let v = 0; v < 2; v++) {
+    const texName = `tile_stone_${v}`;
+    const canvas = scene.textures.createCanvas(texName, TILE.WIDTH, TILE.HEIGHT);
+    const ctx = canvas.context;
+
+    drawDiamond(ctx, stoneColors[v], '#5a5a55');
+    fillWithAdvancedNoise(ctx, stoneColors[v], noise, v * 4000, v);
+
+    // Stone pebbles
+    addScatteredDetails(ctx, [
+      'rgba(100, 100, 90, 0.4)',
+      'rgba(110, 110, 100, 0.3)',
+      'rgba(90, 90, 80, 0.5)'
+    ], 10, rng, [0.8, 2]);
+
+    // Crack lines
+    addCracks(ctx, noise, v * 5000, 3 + v, rng);
+
+    canvas.refresh();
+  }
+
+  // SAND TILES (2 variants)
+  const sandColors = ['#c4b078', '#baa86e'];
+  for (let v = 0; v < 2; v++) {
+    const texName = `tile_sand_${v}`;
+    const canvas = scene.textures.createCanvas(texName, TILE.WIDTH, TILE.HEIGHT);
+    const ctx = canvas.context;
+
+    drawDiamond(ctx, sandColors[v], '#a49058');
+    fillWithAdvancedNoise(ctx, sandColors[v], noise, v * 5000, v);
+
+    // Fine grain details
+    addScatteredDetails(ctx, [
+      'rgba(180, 160, 100, 0.25)',
+      'rgba(190, 170, 110, 0.2)',
+      'rgba(170, 150, 90, 0.3)'
+    ], 20 + v * 3, rng, [0.3, 0.8]);
+
+    canvas.refresh();
+  }
+
+  // WATER TILES (3 variants with ripples)
+  const waterColors = ['#2a6080', '#265878', '#2e6888'];
+  for (let v = 0; v < 3; v++) {
+    const texName = `tile_water_${v}`;
+    const canvas = scene.textures.createCanvas(texName, TILE.WIDTH, TILE.HEIGHT);
+    const ctx = canvas.context;
+
+    drawDiamond(ctx, waterColors[v], '#1a4a60');
+    fillWithAdvancedNoise(ctx, waterColors[v], noise, v * 6000, v);
+    addWaterRipples(ctx, v);
+
+    canvas.refresh();
+  }
+
+  // DEEP WATER TILES (2 variants)
+  const deepWaterColors = ['#1a4060', '#163858'];
+  for (let v = 0; v < 2; v++) {
+    const texName = `tile_water_deep_${v}`;
+    const canvas = scene.textures.createCanvas(texName, TILE.WIDTH, TILE.HEIGHT);
+    const ctx = canvas.context;
+
+    drawDiamond(ctx, deepWaterColors[v], '#0a2a40');
+    fillWithAdvancedNoise(ctx, deepWaterColors[v], noise, v * 7000, v);
+    addWaterRipples(ctx, v + 3);
+
+    canvas.refresh();
+  }
+
+  // SNOW TILES (2 variants)
+  const snowColors = ['#dde8ee', '#d4e0e8'];
+  for (let v = 0; v < 2; v++) {
+    const texName = `tile_snow_${v}`;
+    const canvas = scene.textures.createCanvas(texName, TILE.WIDTH, TILE.HEIGHT);
+    const ctx = canvas.context;
+
+    drawDiamond(ctx, snowColors[v], '#c0d0da');
+    fillWithAdvancedNoise(ctx, snowColors[v], noise, v * 8000, v);
+
+    // Sparkle dots and subtle blue-gray shadows
+    addScatteredDetails(ctx, [
+      'rgba(220, 235, 245, 0.5)',
+      'rgba(210, 225, 235, 0.4)',
+      'rgba(190, 210, 230, 0.3)'
+    ], 12, rng, [0.5, 1.5]);
+
+    canvas.refresh();
+  }
+
+  // ROAD TILES (2 variants)
+  const roadColors = ['#4a4a44', '#424240'];
+  for (let v = 0; v < 2; v++) {
+    const texName = `tile_road_${v}`;
+    const canvas = scene.textures.createCanvas(texName, TILE.WIDTH, TILE.HEIGHT);
+    const ctx = canvas.context;
+
+    drawDiamond(ctx, roadColors[v], '#3a3a35');
+    fillWithAdvancedNoise(ctx, roadColors[v], noise, v * 9000, v);
+
+    addScatteredDetails(ctx, [
+      'rgba(60, 60, 55, 0.4)',
+      'rgba(70, 70, 65, 0.3)'
+    ], 8, rng, [0.8, 2]);
+
+    canvas.refresh();
+  }
 
   generateBuildingTiles(scene, noise, rng);
 }
@@ -215,8 +360,10 @@ function generateBuildingTiles(scene, noise, rng) {
   const wfCanvas = scene.textures.createCanvas('tile_wood_floor_0', TILE.WIDTH, TILE.HEIGHT);
   const wfCtx = wfCanvas.context;
   drawDiamond(wfCtx, '#6a5030', '#5a4020');
-  // Plank lines
-  wfCtx.strokeStyle = 'rgba(0,0,0,0.2)';
+  fillWithAdvancedNoise(wfCtx, '#6a5030', noise, 5000, 0);
+
+  // Wood plank lines
+  wfCtx.strokeStyle = 'rgba(0, 0, 0, 0.25)';
   wfCtx.lineWidth = 0.5;
   for (let i = 1; i < 4; i++) {
     const y = (TILE.HEIGHT / 4) * i;
@@ -225,210 +372,552 @@ function generateBuildingTiles(scene, noise, rng) {
     wfCtx.lineTo(TILE.WIDTH - HALF_W * 0.3, y);
     wfCtx.stroke();
   }
-  fillWithNoise(wfCtx, '#6a5030', noise, 5000, 0.12, 0.8);
   wfCanvas.refresh();
 
   // Tile floor
   const tfCanvas = scene.textures.createCanvas('tile_tile_floor_0', TILE.WIDTH, TILE.HEIGHT);
   const tfCtx = tfCanvas.context;
   drawDiamond(tfCtx, '#8a8a7a', '#7a7a6a');
-  fillWithNoise(tfCtx, '#8a8a7a', noise, 6000, 0.1, 0.5);
+  fillWithAdvancedNoise(tfCtx, '#8a8a7a', noise, 6000, 0);
   tfCanvas.refresh();
 
   // Wall textures
-  const walls = [
-    { name: 'wall_wood', fill: '#5a4020', stroke: '#4a3010' },
-    { name: 'wall_stone', fill: '#6a6a6a', stroke: '#5a5a5a' },
-  ];
-  for (const w of walls) {
-    const c = scene.textures.createCanvas(`tile_${w.name}`, TILE.WIDTH, TILE.HEIGHT);
-    const cx = c.context;
-    drawDiamond(cx, w.fill, w.stroke);
-    c.refresh();
-  }
+  const wallWoodCanvas = scene.textures.createCanvas('tile_wall_wood', TILE.WIDTH, TILE.HEIGHT);
+  const wwCtx = wallWoodCanvas.context;
+  drawDiamond(wwCtx, '#5a4020', '#4a3010');
+  fillWithAdvancedNoise(wwCtx, '#5a4020', noise, 7000, 0);
+  wallWoodCanvas.refresh();
+
+  const wallStoneCanvas = scene.textures.createCanvas('tile_wall_stone', TILE.WIDTH, TILE.HEIGHT);
+  const wsCtx = wallStoneCanvas.context;
+  drawDiamond(wsCtx, '#6a6a6a', '#5a5a5a');
+  fillWithAdvancedNoise(wsCtx, '#6a6a6a', noise, 8000, 0);
+  wallStoneCanvas.refresh();
 
   // Roof
   const roofCanvas = scene.textures.createCanvas('tile_roof', TILE.WIDTH, TILE.HEIGHT);
   const roofCtx = roofCanvas.context;
   drawDiamond(roofCtx, '#4a3020', '#3a2010');
+  fillWithAdvancedNoise(roofCtx, '#4a3020', noise, 9000, 0);
   roofCanvas.refresh();
 }
 
-// Generate tree sprites (3 variants)
+// Generate tree sprites (3 variants: round deciduous, tall pine, wide oak)
 export function generateTreeSprites(scene) {
   const rng = mulberry32(7777);
 
-  for (let v = 0; v < 3; v++) {
-    const w = 40, h = 56;
-    const canvas = scene.textures.createCanvas(`obj_tree_${v}`, w, h);
-    const ctx = canvas.context;
+  // Variant 0: Round deciduous tree
+  const canvas0 = scene.textures.createCanvas('obj_tree_0', 44, 60);
+  const ctx0 = canvas0.context;
 
-    // Trunk
-    const trunkW = 4 + v;
-    const trunkH = 18 + v * 2;
-    const trunkX = w / 2 - trunkW / 2;
-    const trunkY = h - trunkH;
-    ctx.fillStyle = `rgb(${70 + v * 5}, ${45 + v * 3}, ${20 + v * 2})`;
-    ctx.fillRect(trunkX, trunkY, trunkW, trunkH);
+  // Shadow
+  ctx0.fillStyle = 'rgba(0, 0, 0, 0.25)';
+  ctx0.beginPath();
+  ctx0.ellipse(22, 56, 8, 4, 0, 0, Math.PI * 2);
+  ctx0.fill();
 
-    // Canopy: 2-3 overlapping ellipses
-    const canopyLayers = 2 + (v % 2);
-    const greens = ['#2a5a1a', '#336622', '#2e6020', '#3a7028'];
-    for (let i = 0; i < canopyLayers; i++) {
-      const cx = w / 2 + (rng() - 0.5) * 8;
-      const cy = trunkY - 4 + i * 4 - canopyLayers * 3;
-      const rx = 12 + rng() * 6;
-      const ry = 8 + rng() * 5;
-      ctx.fillStyle = greens[(v + i) % greens.length];
-      ctx.beginPath();
-      ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
-      ctx.fill();
-    }
+  // Trunk with bark texture
+  const gradient0 = ctx0.createLinearGradient(18, 35, 26, 35);
+  gradient0.addColorStop(0, '#5a3a20');
+  gradient0.addColorStop(0.5, '#6a4a28');
+  gradient0.addColorStop(1, '#4a2a18');
+  ctx0.fillStyle = gradient0;
+  ctx0.fillRect(18, 35, 8, 22);
 
-    // Leaf detail dots
-    for (let i = 0; i < 20; i++) {
-      const dx = w / 2 + (rng() - 0.5) * 24;
-      const dy = trunkY - 15 + rng() * 18 - 8;
-      ctx.fillStyle = rng() > 0.5 ? 'rgba(50,90,30,0.6)' : 'rgba(80,120,50,0.4)';
-      ctx.fillRect(dx, dy, 1 + rng(), 1 + rng());
-    }
-
-    canvas.refresh();
+  // Bark detail lines
+  ctx0.strokeStyle = 'rgba(30, 20, 10, 0.5)';
+  ctx0.lineWidth = 0.5;
+  for (let i = 0; i < 5; i++) {
+    const y = 38 + i * 4;
+    ctx0.beginPath();
+    ctx0.moveTo(18, y);
+    ctx0.lineTo(26, y + 1);
+    ctx0.stroke();
   }
+
+  // Bark knots
+  ctx0.fillStyle = 'rgba(20, 15, 10, 0.6)';
+  ctx0.fillRect(20, 42, 2, 2);
+  ctx0.fillRect(23, 48, 1, 1);
+
+  // Canopy - multiple overlapping ellipses in different greens
+  const greens0 = ['#2a5a1a', '#336622', '#2e6020', '#3a7028'];
+  ctx0.fillStyle = greens0[2];
+  ctx0.beginPath();
+  ctx0.ellipse(22, 22, 16, 14, 0, 0, Math.PI * 2);
+  ctx0.fill();
+
+  ctx0.fillStyle = greens0[0];
+  ctx0.beginPath();
+  ctx0.ellipse(18, 18, 13, 11, 0, 0, Math.PI * 2);
+  ctx0.fill();
+
+  ctx0.fillStyle = greens0[1];
+  ctx0.beginPath();
+  ctx0.ellipse(26, 20, 12, 10, 0, 0, Math.PI * 2);
+  ctx0.fill();
+
+  ctx0.fillStyle = greens0[3];
+  ctx0.beginPath();
+  ctx0.ellipse(22, 16, 10, 9, 0, 0, Math.PI * 2);
+  ctx0.fill();
+
+  // Leaf detail dots - highlights and shadows
+  for (let i = 0; i < 35; i++) {
+    const lx = 22 + (rng() - 0.5) * 30;
+    const ly = 20 + (rng() - 0.5) * 22;
+    const dist = Math.sqrt(Math.pow(lx - 22, 2) + Math.pow(ly - 20, 2));
+    if (dist < 16) {
+      ctx0.fillStyle = rng() > 0.5 ? 'rgba(50, 90, 30, 0.5)' : 'rgba(80, 130, 50, 0.4)';
+      ctx0.fillRect(lx, ly, 1, 1);
+    }
+  }
+  canvas0.refresh();
+
+  // Variant 1: Tall pine/conifer tree
+  const canvas1 = scene.textures.createCanvas('obj_tree_1', 44, 60);
+  const ctx1 = canvas1.context;
+
+  // Shadow
+  ctx1.fillStyle = 'rgba(0, 0, 0, 0.25)';
+  ctx1.beginPath();
+  ctx1.ellipse(22, 56, 7, 3, 0, 0, Math.PI * 2);
+  ctx1.fill();
+
+  // Trunk
+  const gradient1 = ctx1.createLinearGradient(19, 30, 25, 30);
+  gradient1.addColorStop(0, '#6a4a28');
+  gradient1.addColorStop(0.5, '#7a5a38');
+  gradient1.addColorStop(1, '#5a3a20');
+  ctx1.fillStyle = gradient1;
+  ctx1.fillRect(19, 30, 6, 26);
+
+  // Bark lines
+  ctx1.strokeStyle = 'rgba(30, 20, 10, 0.5)';
+  ctx1.lineWidth = 0.5;
+  for (let i = 0; i < 6; i++) {
+    ctx1.beginPath();
+    ctx1.moveTo(19, 32 + i * 4);
+    ctx1.lineTo(25, 33 + i * 4);
+    ctx1.stroke();
+  }
+
+  // Pine foliage - triangular layers
+  const pineGreens = ['#2e5a1e', '#2a5018', '#325a22'];
+
+  // Bottom layer
+  ctx1.fillStyle = pineGreens[0];
+  ctx1.beginPath();
+  ctx1.moveTo(22, 26);
+  ctx1.lineTo(6, 38);
+  ctx1.lineTo(38, 38);
+  ctx1.closePath();
+  ctx1.fill();
+
+  // Middle layer
+  ctx1.fillStyle = pineGreens[1];
+  ctx1.beginPath();
+  ctx1.moveTo(22, 16);
+  ctx1.lineTo(8, 30);
+  ctx1.lineTo(36, 30);
+  ctx1.closePath();
+  ctx1.fill();
+
+  // Top layer
+  ctx1.fillStyle = pineGreens[2];
+  ctx1.beginPath();
+  ctx1.moveTo(22, 6);
+  ctx1.lineTo(12, 22);
+  ctx1.lineTo(32, 22);
+  ctx1.closePath();
+  ctx1.fill();
+
+  // Pine needle texture
+  for (let i = 0; i < 40; i++) {
+    const nx = 22 + (rng() - 0.5) * 26;
+    const ny = 10 + rng() * 28;
+    // Check if within triangular bounds
+    const relY = ny - 6;
+    const maxX = 10 + (relY / 32) * 16;
+    if (Math.abs(nx - 22) < maxX) {
+      ctx1.fillStyle = rng() > 0.6 ? 'rgba(40, 70, 25, 0.4)' : 'rgba(60, 100, 35, 0.3)';
+      ctx1.fillRect(nx, ny, 1, 1);
+    }
+  }
+  canvas1.refresh();
+
+  // Variant 2: Wide spreading oak
+  const canvas2 = scene.textures.createCanvas('obj_tree_2', 44, 60);
+  const ctx2 = canvas2.context;
+
+  // Shadow
+  ctx2.fillStyle = 'rgba(0, 0, 0, 0.25)';
+  ctx2.beginPath();
+  ctx2.ellipse(22, 56, 10, 5, 0, 0, Math.PI * 2);
+  ctx2.fill();
+
+  // Trunk - thicker for oak
+  const gradient2 = ctx2.createLinearGradient(16, 32, 28, 32);
+  gradient2.addColorStop(0, '#5a3a20');
+  gradient2.addColorStop(0.5, '#6a4a28');
+  gradient2.addColorStop(1, '#4a2a18');
+  ctx2.fillStyle = gradient2;
+  ctx2.fillRect(16, 32, 12, 24);
+
+  // Bark texture
+  ctx2.strokeStyle = 'rgba(30, 20, 10, 0.5)';
+  ctx2.lineWidth = 0.5;
+  for (let i = 0; i < 6; i++) {
+    ctx2.beginPath();
+    ctx2.moveTo(16, 34 + i * 4);
+    ctx2.lineTo(28, 35 + i * 4);
+    ctx2.stroke();
+  }
+  ctx2.fillStyle = 'rgba(20, 15, 10, 0.6)';
+  ctx2.fillRect(18, 40, 2, 2);
+  ctx2.fillRect(24, 46, 2, 2);
+  ctx2.fillRect(20, 51, 1, 1);
+
+  // Wide bushy canopy
+  const oakGreens = ['#3a6a28', '#2e5a20', '#336622', '#2a5218'];
+
+  // Outer canopy layers
+  ctx2.fillStyle = oakGreens[0];
+  ctx2.beginPath();
+  ctx2.ellipse(10, 20, 12, 10, 0, 0, Math.PI * 2);
+  ctx2.fill();
+
+  ctx2.fillStyle = oakGreens[1];
+  ctx2.beginPath();
+  ctx2.ellipse(34, 22, 11, 9, 0, 0, Math.PI * 2);
+  ctx2.fill();
+
+  ctx2.fillStyle = oakGreens[2];
+  ctx2.beginPath();
+  ctx2.ellipse(22, 14, 14, 11, 0, 0, Math.PI * 2);
+  ctx2.fill();
+
+  ctx2.fillStyle = oakGreens[3];
+  ctx2.beginPath();
+  ctx2.ellipse(22, 20, 12, 10, 0, 0, Math.PI * 2);
+  ctx2.fill();
+
+  ctx2.fillStyle = oakGreens[0];
+  ctx2.beginPath();
+  ctx2.ellipse(16, 26, 10, 8, 0, 0, Math.PI * 2);
+  ctx2.fill();
+
+  ctx2.fillStyle = oakGreens[2];
+  ctx2.beginPath();
+  ctx2.ellipse(28, 24, 11, 9, 0, 0, Math.PI * 2);
+  ctx2.fill();
+
+  // Leaf detail
+  for (let i = 0; i < 45; i++) {
+    const lx = 22 + (rng() - 0.5) * 36;
+    const ly = 20 + (rng() - 0.5) * 26;
+    const dist = Math.sqrt(Math.pow(lx - 22, 2) + Math.pow(ly - 20, 2));
+    if (dist < 18) {
+      ctx2.fillStyle = rng() > 0.5 ? 'rgba(50, 90, 30, 0.6)' : 'rgba(80, 130, 50, 0.4)';
+      ctx2.fillRect(lx, ly, 1, 1);
+    }
+  }
+  canvas2.refresh();
 }
 
-// Generate rock sprites (2 variants)
+// Generate rock sprites (2 variants with facets and moss)
 export function generateRockSprites(scene) {
   const rng = mulberry32(8888);
 
   for (let v = 0; v < 2; v++) {
-    const w = 24, h = 20;
+    const w = 28, h = 22;
     const canvas = scene.textures.createCanvas(`obj_rock_${v}`, w, h);
     const ctx = canvas.context;
 
-    // Irregular rock shape using multiple overlapping ellipses
-    const grays = ['#6a6a62', '#7a7a70', '#5e5e58'];
+    // Shadow underneath
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+    ctx.beginPath();
+    ctx.ellipse(w / 2, h - 2, w / 2.5, h / 6, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Irregular rock shape with multiple facets
+    const grays = ['#6a6a62', '#7a7a70', '#5e5e58', '#6e6e68'];
+
+    // Base shape
     ctx.fillStyle = grays[v];
     ctx.beginPath();
-    ctx.ellipse(w / 2, h / 2 + 2, w / 2.5, h / 3, 0, 0, Math.PI * 2);
+    ctx.ellipse(w / 2, h / 2, w / 2.5, h / 2.8, 0, 0, Math.PI * 2);
     ctx.fill();
 
+    // Secondary facet
     ctx.fillStyle = grays[(v + 1) % grays.length];
     ctx.beginPath();
-    ctx.ellipse(w / 2 - 2, h / 2 - 1, w / 3, h / 3.5, 0.3, 0, Math.PI * 2);
+    ctx.ellipse(w / 2 - 3, h / 2 - 2, w / 3.5, h / 3.2, 0.4, 0, Math.PI * 2);
     ctx.fill();
 
-    // Highlight edge
-    ctx.strokeStyle = 'rgba(200,200,190,0.15)';
-    ctx.lineWidth = 0.5;
+    // Third facet
+    ctx.fillStyle = grays[(v + 2) % grays.length];
     ctx.beginPath();
-    ctx.ellipse(w / 2, h / 2, w / 2.5 - 1, h / 3 - 1, 0, Math.PI * 1.2, Math.PI * 1.8);
+    ctx.ellipse(w / 2 + 4, h / 2 + 1, w / 4, h / 3.5, -0.3, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Highlight on top-left
+    ctx.strokeStyle = 'rgba(200, 200, 190, 0.3)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(w / 2 - 2, h / 2 - 3, w / 6, Math.PI * 1.2, Math.PI * 1.8);
     ctx.stroke();
 
-    // Dark cracks
-    ctx.strokeStyle = 'rgba(30,30,25,0.3)';
+    // Shadow on bottom-right
+    ctx.fillStyle = 'rgba(30, 30, 25, 0.25)';
+    ctx.beginPath();
+    ctx.ellipse(w / 2 + 3, h / 2 + 3, w / 6, h / 8, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Crack lines
+    ctx.strokeStyle = 'rgba(30, 30, 25, 0.5)';
     ctx.lineWidth = 0.5;
     ctx.beginPath();
     ctx.moveTo(w * 0.3, h * 0.4);
-    ctx.lineTo(w * 0.5, h * 0.6);
+    ctx.lineTo(w * 0.45, h * 0.55);
+    ctx.lineTo(w * 0.5, h * 0.65);
     ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(w * 0.6, h * 0.35);
+    ctx.lineTo(w * 0.7, h * 0.5);
+    ctx.stroke();
+
+    // Moss/lichen spots (subtle green specks)
+    for (let i = 0; i < 5 + v * 2; i++) {
+      const mx = w / 2 + (rng() - 0.5) * w * 0.5;
+      const my = h / 2 + (rng() - 0.5) * h * 0.4;
+      ctx.fillStyle = 'rgba(80, 100, 60, 0.4)';
+      ctx.fillRect(mx, my, 1 + rng(), 1);
+    }
 
     canvas.refresh();
   }
 }
 
-// Generate bush sprites (2 variants)
+// Generate bush sprites (2 variants with berries and leaf clusters)
 export function generateBushSprites(scene) {
   const rng = mulberry32(9999);
 
   for (let v = 0; v < 2; v++) {
-    const w = 22, h = 18;
+    const w = 24, h = 20;
     const canvas = scene.textures.createCanvas(`obj_bush_${v}`, w, h);
     const ctx = canvas.context;
 
-    // Base bush shape
-    const greens = ['#3a6a28', '#2e5a20'];
+    // Ground shadow
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
+    ctx.beginPath();
+    ctx.ellipse(w / 2, h - 2, w / 2.5, h / 8, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Multiple leaf cluster ellipses
+    const greens = ['#3a6a28', '#2e5a20', '#336622', '#2a5218'];
+
+    // Base cluster
     ctx.fillStyle = greens[v];
     ctx.beginPath();
     ctx.ellipse(w / 2, h / 2 + 2, w / 2.3, h / 2.5, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    // Darker center
-    ctx.fillStyle = 'rgba(20,40,15,0.3)';
+    // Left cluster
+    ctx.fillStyle = greens[(v + 1) % greens.length];
     ctx.beginPath();
-    ctx.ellipse(w / 2, h / 2 + 3, w / 4, h / 4, 0, 0, Math.PI * 2);
+    ctx.ellipse(w / 2 - 4, h / 2, w / 3.5, h / 3, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    // Berry dots (red/blue for berry bushes)
-    const berryColors = ['#cc3344', '#4466cc'];
-    for (let i = 0; i < 5 + v * 2; i++) {
+    // Right cluster
+    ctx.fillStyle = greens[(v + 2) % greens.length];
+    ctx.beginPath();
+    ctx.ellipse(w / 2 + 4, h / 2 + 1, w / 3.5, h / 3, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Top cluster
+    ctx.fillStyle = greens[(v + 3) % greens.length];
+    ctx.beginPath();
+    ctx.ellipse(w / 2, h / 2 - 2, w / 3.8, h / 3.2, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Darker center shadow
+    ctx.fillStyle = 'rgba(20, 40, 15, 0.4)';
+    ctx.beginPath();
+    ctx.ellipse(w / 2, h / 2 + 3, w / 5, h / 5, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Berry dots (alternating red and blue for variety)
+    const berryColors = v === 0 ? ['#cc3344', '#dd4455'] : ['#4466cc', '#5577dd'];
+    for (let i = 0; i < 7 + v * 3; i++) {
       const bx = w / 2 + (rng() - 0.5) * w * 0.6;
-      const by = h / 2 + (rng() - 0.5) * h * 0.4;
-      ctx.fillStyle = berryColors[Math.floor(rng() * 2)];
-      ctx.beginPath();
-      ctx.arc(bx, by, 1 + rng() * 0.5, 0, Math.PI * 2);
-      ctx.fill();
+      const by = h / 2 + (rng() - 0.5) * h * 0.5;
+      const dist = Math.sqrt(Math.pow(bx - w/2, 2) + Math.pow(by - h/2, 2));
+      if (dist < w / 3) {
+        ctx.fillStyle = berryColors[Math.floor(rng() * 2)];
+        ctx.beginPath();
+        ctx.arc(bx, by, 1 + rng() * 0.8, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Berry highlight
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+        ctx.beginPath();
+        ctx.arc(bx - 0.3, by - 0.3, 0.4, 0, Math.PI * 2);
+        ctx.fill();
+      }
     }
 
-    // Leaf highlights
+    // Leaf highlight details
+    for (let i = 0; i < 12; i++) {
+      const lx = w / 2 + (rng() - 0.5) * w * 0.5;
+      const ly = h / 2 + (rng() - 0.5) * h * 0.4;
+      const dist = Math.sqrt(Math.pow(lx - w/2, 2) + Math.pow(ly - h/2, 2));
+      if (dist < w / 3) {
+        ctx.fillStyle = 'rgba(80, 130, 50, 0.5)';
+        ctx.fillRect(lx, ly, 1.5, 1);
+      }
+    }
+
+    // Leaf shadow details
     for (let i = 0; i < 8; i++) {
       const lx = w / 2 + (rng() - 0.5) * w * 0.5;
       const ly = h / 2 + (rng() - 0.5) * h * 0.4;
-      ctx.fillStyle = 'rgba(80,130,50,0.4)';
-      ctx.fillRect(lx, ly, 1.5, 1);
+      const dist = Math.sqrt(Math.pow(lx - w/2, 2) + Math.pow(ly - h/2, 2));
+      if (dist < w / 3) {
+        ctx.fillStyle = 'rgba(30, 50, 20, 0.4)';
+        ctx.fillRect(lx, ly, 1.5, 1);
+      }
     }
 
     canvas.refresh();
   }
 }
 
-// Generate campfire sprite
+// Generate campfire sprite with stone ring, logs, and layered flame
 export function generateCampfireSprite(scene) {
-  const w = 32, h = 36;
+  const w = 36, h = 40;
   const canvas = scene.textures.createCanvas('obj_campfire', w, h);
   const ctx = canvas.context;
 
-  // Stone ring (8 small stones in a circle)
-  const stoneColor = '#6a6a60';
-  const ringR = 10;
-  const cx = w / 2, cy = h / 2 + 4;
-  for (let i = 0; i < 8; i++) {
-    const angle = (i / 8) * Math.PI * 2;
-    const sx = cx + Math.cos(angle) * ringR;
-    const sy = cy + Math.sin(angle) * ringR * 0.5; // Flatten for iso
-    ctx.fillStyle = stoneColor;
+  const cx = w / 2, cy = h / 2 + 6;
+
+  // Ground glow circle (warm orange tint)
+  const glowGradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, 16);
+  glowGradient.addColorStop(0, 'rgba(255, 140, 40, 0.2)');
+  glowGradient.addColorStop(1, 'rgba(255, 140, 40, 0)');
+  ctx.fillStyle = glowGradient;
+  ctx.beginPath();
+  ctx.ellipse(cx, cy + 2, 16, 11, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Stone ring (8-10 individual rounded stones in isometric perspective)
+  const ringRadius = 11;
+  const stoneCount = 9;
+  for (let i = 0; i < stoneCount; i++) {
+    const angle = (i / stoneCount) * Math.PI * 2;
+    const sx = cx + Math.cos(angle) * ringRadius;
+    const sy = cy + Math.sin(angle) * ringRadius * 0.4; // Flatten for iso view
+
+    // Stone with gradient for depth
+    const stoneGrad = ctx.createRadialGradient(sx - 1, sy - 0.5, 0, sx, sy, 3);
+    stoneGrad.addColorStop(0, '#7a7a6a');
+    stoneGrad.addColorStop(1, '#5a5a52');
+    ctx.fillStyle = stoneGrad;
     ctx.beginPath();
-    ctx.ellipse(sx, sy, 3, 2, 0, 0, Math.PI * 2);
+    ctx.ellipse(sx, sy, 3.5, 2.5, angle, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Stone highlight
+    ctx.fillStyle = 'rgba(140, 140, 130, 0.4)';
+    ctx.beginPath();
+    ctx.arc(sx - 1, sy - 1, 1, 0, Math.PI * 2);
     ctx.fill();
   }
 
-  // Wood logs
-  ctx.fillStyle = '#5a3a1a';
-  ctx.fillRect(cx - 6, cy - 1, 12, 3);
-  ctx.fillRect(cx - 2, cy - 4, 3, 10);
+  // Wood logs crossed in center with bark texture
+  const logGrad1 = ctx.createLinearGradient(cx - 8, cy, cx + 8, cy);
+  logGrad1.addColorStop(0, '#4a2a18');
+  logGrad1.addColorStop(0.5, '#5a3a20');
+  logGrad1.addColorStop(1, '#4a2a18');
+  ctx.fillStyle = logGrad1;
+  ctx.fillRect(cx - 8, cy - 1, 16, 3.5);
 
-  // Flame
+  const logGrad2 = ctx.createLinearGradient(cx, cy - 6, cx, cy + 6);
+  logGrad2.addColorStop(0, '#4a2a18');
+  logGrad2.addColorStop(0.5, '#5a3a20');
+  logGrad2.addColorStop(1, '#4a2a18');
+  ctx.fillStyle = logGrad2;
+  ctx.fillRect(cx - 1.5, cy - 6, 3.5, 12);
+
+  // Bark lines on logs
+  ctx.strokeStyle = 'rgba(20, 15, 10, 0.5)';
+  ctx.lineWidth = 0.5;
+  ctx.beginPath();
+  ctx.moveTo(cx - 6, cy);
+  ctx.lineTo(cx - 4, cy + 1);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(cx + 4, cy);
+  ctx.lineTo(cx + 6, cy + 1);
+  ctx.stroke();
+
+  // Ember dots below flame
+  const rng = mulberry32(6666);
+  ctx.fillStyle = '#ff6622';
+  for (let i = 0; i < 8; i++) {
+    const ex = cx + (rng() - 0.5) * 12;
+    const ey = cy + (rng() - 0.5) * 6;
+    ctx.fillRect(ex, ey, 1, 1);
+  }
+
+  // Flame with 3 layers: outer red-orange, middle orange, inner yellow-white
+  // Outer flame (red-orange)
+  ctx.fillStyle = '#ff4422';
+  ctx.beginPath();
+  ctx.moveTo(cx, cy - 18);
+  ctx.quadraticCurveTo(cx - 2, cy - 14, cx - 7, cy - 4);
+  ctx.lineTo(cx - 6, cy);
+  ctx.quadraticCurveTo(cx - 3, cy - 2, cx, cy - 3);
+  ctx.quadraticCurveTo(cx + 3, cy - 2, cx + 6, cy);
+  ctx.lineTo(cx + 7, cy - 4);
+  ctx.quadraticCurveTo(cx + 2, cy - 14, cx, cy - 18);
+  ctx.closePath();
+  ctx.fill();
+
+  // Middle flame (orange)
   ctx.fillStyle = '#ff8822';
   ctx.beginPath();
-  ctx.moveTo(cx, cy - 14);
-  ctx.lineTo(cx + 5, cy - 2);
-  ctx.lineTo(cx - 5, cy - 2);
+  ctx.moveTo(cx, cy - 15);
+  ctx.quadraticCurveTo(cx - 1.5, cy - 12, cx - 5, cy - 4);
+  ctx.lineTo(cx - 4, cy - 1);
+  ctx.quadraticCurveTo(cx - 2, cy - 2, cx, cy - 2.5);
+  ctx.quadraticCurveTo(cx + 2, cy - 2, cx + 4, cy - 1);
+  ctx.lineTo(cx + 5, cy - 4);
+  ctx.quadraticCurveTo(cx + 1.5, cy - 12, cx, cy - 15);
   ctx.closePath();
   ctx.fill();
 
-  // Inner flame
-  ctx.fillStyle = '#ffcc44';
+  // Inner flame (yellow-white)
+  ctx.fillStyle = '#ffdd44';
   ctx.beginPath();
-  ctx.moveTo(cx, cy - 10);
-  ctx.lineTo(cx + 3, cy - 3);
-  ctx.lineTo(cx - 3, cy - 3);
+  ctx.moveTo(cx, cy - 12);
+  ctx.quadraticCurveTo(cx - 1, cy - 10, cx - 3, cy - 4);
+  ctx.lineTo(cx - 2, cy - 2);
+  ctx.quadraticCurveTo(cx - 1, cy - 2.5, cx, cy - 3);
+  ctx.quadraticCurveTo(cx + 1, cy - 2.5, cx + 2, cy - 2);
+  ctx.lineTo(cx + 3, cy - 4);
+  ctx.quadraticCurveTo(cx + 1, cy - 10, cx, cy - 12);
   ctx.closePath();
   ctx.fill();
 
-  // Glow circle
-  ctx.fillStyle = 'rgba(255,140,40,0.15)';
+  // Bright core
+  ctx.fillStyle = '#ffffaa';
   ctx.beginPath();
-  ctx.ellipse(cx, cy, 14, 10, 0, 0, Math.PI * 2);
+  ctx.moveTo(cx, cy - 8);
+  ctx.lineTo(cx - 1.5, cy - 4);
+  ctx.lineTo(cx + 1.5, cy - 4);
+  ctx.closePath();
   ctx.fill();
 
   canvas.refresh();
@@ -447,94 +936,196 @@ export function generatePlayerSprites(scene) {
     // Body colors
     const skinColor = '#ddbb99';
     const hairColor = '#3a2a1a';
-    const shirtColor = '#445566';
+    const shirtColor = '#4a5a6a';
+    const shirtShadow = '#3a4a5a';
     const pantsColor = '#334455';
     const bootColor = '#2a1a0a';
 
-    if (dirs[d] === 'S' || dirs[d] === 'N') {
-      // Front/back facing
-      // Head
-      ctx.fillStyle = dirs[d] === 'S' ? skinColor : hairColor;
+    if (dirs[d] === 'S') {
+      // SOUTH - front facing
+
+      // Head with gradient for depth
+      const headGrad = ctx.createRadialGradient(cx - 1, 8, 1, cx, 9, 6);
+      headGrad.addColorStop(0, '#eeccaa');
+      headGrad.addColorStop(1, skinColor);
+      ctx.fillStyle = headGrad;
       ctx.beginPath();
-      ctx.arc(cx, 9, 5, 0, Math.PI * 2);
+      ctx.arc(cx, 9, 6, 0, Math.PI * 2);
       ctx.fill();
 
-      if (dirs[d] === 'S') {
-        // Hair on top for front
-        ctx.fillStyle = hairColor;
-        ctx.fillRect(cx - 5, 4, 10, 4);
-      }
+      // Hair on top
+      ctx.fillStyle = hairColor;
+      ctx.beginPath();
+      ctx.arc(cx, 5, 6, 0, Math.PI);
+      ctx.fill();
 
-      // Body
-      ctx.fillStyle = shirtColor;
-      ctx.fillRect(cx - 6, 14, 12, 10);
+      // Eyes
+      ctx.fillStyle = '#000000';
+      ctx.fillRect(cx - 3, 8, 1.5, 1.5);
+      ctx.fillRect(cx + 1.5, 8, 1.5, 1.5);
 
-      // Arms
+      // Torso with shading
       ctx.fillStyle = shirtColor;
-      ctx.fillRect(cx - 8, 14, 3, 8);
-      ctx.fillRect(cx + 5, 14, 3, 8);
+      ctx.fillRect(cx - 6, 15, 12, 10);
+      ctx.fillStyle = shirtShadow;
+      ctx.fillRect(cx - 6, 15, 2, 10);
+      ctx.fillRect(cx + 4, 15, 2, 10);
+
+      // Collar detail
+      ctx.fillStyle = shirtShadow;
+      ctx.fillRect(cx - 2, 15, 4, 1);
+
+      // Arms with rounded shoulders
+      ctx.fillStyle = shirtColor;
+      ctx.beginPath();
+      ctx.arc(cx - 7, 17, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillRect(cx - 9, 17, 3, 7);
+
+      ctx.beginPath();
+      ctx.arc(cx + 7, 17, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillRect(cx + 6, 17, 3, 7);
 
       // Hands
       ctx.fillStyle = skinColor;
-      ctx.fillRect(cx - 8, 22, 3, 2);
-      ctx.fillRect(cx + 5, 22, 3, 2);
+      ctx.fillRect(cx - 9, 24, 3, 2.5);
+      ctx.fillRect(cx + 6, 24, 3, 2.5);
 
       // Legs
       ctx.fillStyle = pantsColor;
-      ctx.fillRect(cx - 5, 24, 4, 7);
-      ctx.fillRect(cx + 1, 24, 4, 7);
+      ctx.fillRect(cx - 5, 25, 4, 8);
+      ctx.fillRect(cx + 1, 25, 4, 8);
 
-      // Boots
+      // Boots with sole detail
       ctx.fillStyle = bootColor;
-      ctx.fillRect(cx - 6, 30, 5, 3);
-      ctx.fillRect(cx + 1, 30, 5, 3);
-    } else {
-      // Side facing (W or E)
-      const flip = dirs[d] === 'E' ? 1 : -1;
-      const ox = dirs[d] === 'E' ? 0 : 2;
+      ctx.fillRect(cx - 6, 32, 5, 4);
+      ctx.fillRect(cx + 1, 32, 5, 4);
 
-      // Head
-      ctx.fillStyle = skinColor;
+      // Boot soles
+      ctx.fillStyle = '#1a0a00';
+      ctx.fillRect(cx - 6, 35, 5, 1);
+      ctx.fillRect(cx + 1, 35, 5, 1);
+
+    } else if (dirs[d] === 'N') {
+      // NORTH - back facing
+
+      // Head (mostly hair from back)
+      ctx.fillStyle = hairColor;
       ctx.beginPath();
-      ctx.arc(cx + ox, 9, 5, 0, Math.PI * 2);
+      ctx.arc(cx, 9, 6, 0, Math.PI * 2);
       ctx.fill();
 
-      // Hair
-      ctx.fillStyle = hairColor;
-      if (dirs[d] === 'W') {
-        ctx.fillRect(cx + ox - 5, 4, 8, 4);
-        ctx.fillRect(cx + ox + 2, 5, 3, 6);
-      } else {
-        ctx.fillRect(cx + ox - 3, 4, 8, 4);
-        ctx.fillRect(cx + ox - 5, 5, 3, 6);
-      }
-
-      // Body
-      ctx.fillStyle = shirtColor;
-      ctx.fillRect(cx + ox - 4, 14, 8, 10);
-
-      // Arm (visible side)
-      ctx.fillStyle = shirtColor;
-      const armX = dirs[d] === 'E' ? cx + ox + 3 : cx + ox - 6;
-      ctx.fillRect(armX, 15, 3, 7);
+      // Neck
       ctx.fillStyle = skinColor;
-      ctx.fillRect(armX, 22, 3, 2);
+      ctx.fillRect(cx - 2, 13, 4, 2);
+
+      // Torso
+      ctx.fillStyle = shirtColor;
+      ctx.fillRect(cx - 6, 15, 12, 10);
+      ctx.fillStyle = shirtShadow;
+      ctx.fillRect(cx - 1, 15, 2, 10);
+
+      // Arms
+      ctx.fillStyle = shirtColor;
+      ctx.beginPath();
+      ctx.arc(cx - 7, 17, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillRect(cx - 9, 17, 3, 7);
+
+      ctx.beginPath();
+      ctx.arc(cx + 7, 17, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillRect(cx + 6, 17, 3, 7);
+
+      // Hands
+      ctx.fillStyle = skinColor;
+      ctx.fillRect(cx - 9, 24, 3, 2.5);
+      ctx.fillRect(cx + 6, 24, 3, 2.5);
 
       // Legs
       ctx.fillStyle = pantsColor;
-      ctx.fillRect(cx + ox - 3, 24, 3, 7);
-      ctx.fillRect(cx + ox + 1, 24, 3, 7);
+      ctx.fillRect(cx - 5, 25, 4, 8);
+      ctx.fillRect(cx + 1, 25, 4, 8);
 
       // Boots
       ctx.fillStyle = bootColor;
-      ctx.fillRect(cx + ox - 4, 30, 4, 3);
-      ctx.fillRect(cx + ox + 1, 30, 4, 3);
+      ctx.fillRect(cx - 6, 32, 5, 4);
+      ctx.fillRect(cx + 1, 32, 5, 4);
+      ctx.fillStyle = '#1a0a00';
+      ctx.fillRect(cx - 6, 35, 5, 1);
+      ctx.fillRect(cx + 1, 35, 5, 1);
+
+    } else {
+      // WEST or EAST - side facing
+      const flip = dirs[d] === 'E' ? 1 : -1;
+      const ox = dirs[d] === 'E' ? 2 : -2;
+
+      // Head
+      const headGradSide = ctx.createRadialGradient(cx + ox - flip, 8, 1, cx + ox, 9, 6);
+      headGradSide.addColorStop(0, '#eeccaa');
+      headGradSide.addColorStop(1, skinColor);
+      ctx.fillStyle = headGradSide;
+      ctx.beginPath();
+      ctx.arc(cx + ox, 9, 6, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Hair profile
+      ctx.fillStyle = hairColor;
+      if (dirs[d] === 'W') {
+        ctx.beginPath();
+        ctx.arc(cx + ox - 3, 6, 5, 0, Math.PI);
+        ctx.fill();
+        ctx.fillRect(cx + ox - 6, 6, 6, 4);
+        ctx.fillRect(cx + ox + 1, 6, 3, 6);
+      } else {
+        ctx.beginPath();
+        ctx.arc(cx + ox + 3, 6, 5, 0, Math.PI);
+        ctx.fill();
+        ctx.fillRect(cx + ox, 6, 6, 4);
+        ctx.fillRect(cx + ox - 4, 6, 3, 6);
+      }
+
+      // Eye
+      ctx.fillStyle = '#000000';
+      ctx.fillRect(cx + ox + flip * 2, 9, 1.5, 1);
+
+      // Torso
+      ctx.fillStyle = shirtColor;
+      ctx.fillRect(cx + ox - 5, 15, 10, 10);
+      ctx.fillStyle = shirtShadow;
+      ctx.fillRect(cx + ox + (flip > 0 ? 3 : -5), 15, 2, 10);
+
+      // Visible arm
+      ctx.fillStyle = shirtColor;
+      const armX = dirs[d] === 'E' ? cx + ox + 4 : cx + ox - 7;
+      ctx.beginPath();
+      ctx.arc(armX + 1, 17, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillRect(armX, 17, 3, 7);
+
+      // Hand
+      ctx.fillStyle = skinColor;
+      ctx.fillRect(armX, 24, 3, 2.5);
+
+      // Legs
+      ctx.fillStyle = pantsColor;
+      ctx.fillRect(cx + ox - 4, 25, 3.5, 8);
+      ctx.fillRect(cx + ox + 1, 25, 3.5, 8);
+
+      // Boots
+      ctx.fillStyle = bootColor;
+      ctx.fillRect(cx + ox - 5, 32, 4, 4);
+      ctx.fillRect(cx + ox + 1, 32, 4, 4);
+      ctx.fillStyle = '#1a0a00';
+      ctx.fillRect(cx + ox - 5, 35, 4, 1);
+      ctx.fillRect(cx + ox + 1, 35, 4, 1);
     }
 
     canvas.refresh();
   }
 
-  // Also keep a default 'player' texture (south facing) for compatibility
+  // Default 'player' texture (south facing)
   const defaultCanvas = scene.textures.createCanvas('player', size, size + 8);
   const dCtx = defaultCanvas.context;
   const southTexture = scene.textures.get('player_S');
@@ -547,85 +1138,393 @@ export function generatePlayerSprites(scene) {
   defaultCanvas.refresh();
 }
 
+// Generate detailed animal silhouettes (10 species)
+export function generateAnimalSprites(scene) {
+  const rng = mulberry32(5555);
+
+  // DEER - slender with antlers
+  const deerCanvas = scene.textures.createCanvas('animal_deer', 28, 20);
+  const deerCtx = deerCanvas.context;
+  deerCtx.fillStyle = '#8B6914';
+  // Body
+  deerCtx.beginPath();
+  deerCtx.ellipse(14, 11, 10, 6, 0, 0, Math.PI * 2);
+  deerCtx.fill();
+  // Head
+  deerCtx.beginPath();
+  deerCtx.ellipse(23, 8, 4, 3.5, 0, 0, Math.PI * 2);
+  deerCtx.fill();
+  // Neck
+  deerCtx.fillRect(18, 9, 5, 3);
+  // Legs
+  deerCtx.fillRect(10, 15, 1.5, 5);
+  deerCtx.fillRect(17, 15, 1.5, 5);
+  // Antlers
+  deerCtx.strokeStyle = '#8B6914';
+  deerCtx.lineWidth = 1;
+  deerCtx.beginPath();
+  deerCtx.moveTo(24, 6);
+  deerCtx.lineTo(24, 3);
+  deerCtx.moveTo(24, 4);
+  deerCtx.lineTo(26, 2);
+  deerCtx.moveTo(24, 4);
+  deerCtx.lineTo(22, 2);
+  deerCtx.stroke();
+  // Eye
+  deerCtx.fillStyle = '#000000';
+  deerCtx.fillRect(24, 8, 1, 1);
+  // Light underbelly
+  deerCtx.fillStyle = 'rgba(200, 180, 140, 0.4)';
+  deerCtx.beginPath();
+  deerCtx.ellipse(14, 13, 8, 3, 0, 0, Math.PI * 2);
+  deerCtx.fill();
+  deerCanvas.refresh();
+
+  // ELK - larger, bulkier
+  const elkCanvas = scene.textures.createCanvas('animal_elk', 32, 24);
+  const elkCtx = elkCanvas.context;
+  elkCtx.fillStyle = '#6B4914';
+  // Body
+  elkCtx.beginPath();
+  elkCtx.ellipse(16, 13, 12, 7, 0, 0, Math.PI * 2);
+  elkCtx.fill();
+  // Head
+  elkCtx.beginPath();
+  elkCtx.ellipse(26, 10, 5, 4, 0, 0, Math.PI * 2);
+  elkCtx.fill();
+  // Neck
+  elkCtx.fillRect(20, 11, 6, 4);
+  // Legs
+  elkCtx.fillRect(11, 18, 2, 6);
+  elkCtx.fillRect(19, 18, 2, 6);
+  // Antlers (larger)
+  elkCtx.strokeStyle = '#6B4914';
+  elkCtx.lineWidth = 1.5;
+  elkCtx.beginPath();
+  elkCtx.moveTo(27, 7);
+  elkCtx.lineTo(27, 3);
+  elkCtx.moveTo(27, 5);
+  elkCtx.lineTo(29, 2);
+  elkCtx.moveTo(27, 5);
+  elkCtx.lineTo(25, 2);
+  elkCtx.moveTo(27, 4);
+  elkCtx.lineTo(30, 4);
+  elkCtx.stroke();
+  // Eye
+  elkCtx.fillStyle = '#000000';
+  elkCtx.fillRect(27, 10, 1, 1);
+  elkCanvas.refresh();
+
+  // RABBIT - round body, long ears
+  const rabbitCanvas = scene.textures.createCanvas('animal_rabbit', 14, 12);
+  const rabbitCtx = rabbitCanvas.context;
+  rabbitCtx.fillStyle = '#AA9988';
+  // Body
+  rabbitCtx.beginPath();
+  rabbitCtx.ellipse(7, 8, 5, 4, 0, 0, Math.PI * 2);
+  rabbitCtx.fill();
+  // Head
+  rabbitCtx.beginPath();
+  rabbitCtx.ellipse(10, 5, 3, 2.5, 0, 0, Math.PI * 2);
+  rabbitCtx.fill();
+  // Ears
+  rabbitCtx.fillRect(9, 1, 1.5, 4);
+  rabbitCtx.fillRect(11, 1, 1.5, 4);
+  // Eye
+  rabbitCtx.fillStyle = '#000000';
+  rabbitCtx.fillRect(11, 5, 1, 1);
+  // White tail
+  rabbitCtx.fillStyle = '#ffffff';
+  rabbitCtx.beginPath();
+  rabbitCtx.arc(4, 8, 1.5, 0, Math.PI * 2);
+  rabbitCtx.fill();
+  rabbitCanvas.refresh();
+
+  // SQUIRREL - small with bushy tail
+  const squirrelCanvas = scene.textures.createCanvas('animal_squirrel', 12, 10);
+  const squirrelCtx = squirrelCanvas.context;
+  squirrelCtx.fillStyle = '#886644';
+  // Body
+  squirrelCtx.beginPath();
+  squirrelCtx.ellipse(6, 6, 3, 2.5, 0, 0, Math.PI * 2);
+  squirrelCtx.fill();
+  // Head
+  squirrelCtx.beginPath();
+  squirrelCtx.ellipse(9, 4, 2, 2, 0, 0, Math.PI * 2);
+  squirrelCtx.fill();
+  // Bushy tail
+  squirrelCtx.beginPath();
+  squirrelCtx.ellipse(3, 4, 3, 4, 0.5, 0, Math.PI * 2);
+  squirrelCtx.fill();
+  // Eye
+  squirrelCtx.fillStyle = '#000000';
+  squirrelCtx.fillRect(10, 4, 0.8, 0.8);
+  squirrelCanvas.refresh();
+
+  // WOLF - gray with pointy ears
+  const wolfCanvas = scene.textures.createCanvas('animal_wolf', 24, 16);
+  const wolfCtx = wolfCanvas.context;
+  const wolfGrad = wolfCtx.createLinearGradient(0, 0, 0, 16);
+  wolfGrad.addColorStop(0, '#666666');
+  wolfGrad.addColorStop(1, '#444444');
+  wolfCtx.fillStyle = wolfGrad;
+  // Body
+  wolfCtx.beginPath();
+  wolfCtx.ellipse(12, 9, 9, 5, 0, 0, Math.PI * 2);
+  wolfCtx.fill();
+  // Head
+  wolfCtx.beginPath();
+  wolfCtx.ellipse(20, 7, 4, 3.5, 0, 0, Math.PI * 2);
+  wolfCtx.fill();
+  // Neck
+  wolfCtx.fillRect(16, 8, 4, 3);
+  // Pointy ears
+  wolfCtx.beginPath();
+  wolfCtx.moveTo(19, 5);
+  wolfCtx.lineTo(18, 2);
+  wolfCtx.lineTo(20, 5);
+  wolfCtx.fill();
+  wolfCtx.beginPath();
+  wolfCtx.moveTo(21, 5);
+  wolfCtx.lineTo(20, 2);
+  wolfCtx.lineTo(22, 5);
+  wolfCtx.fill();
+  // Legs
+  wolfCtx.fillRect(8, 12, 1.5, 4);
+  wolfCtx.fillRect(15, 12, 1.5, 4);
+  // Bushy tail
+  wolfCtx.beginPath();
+  wolfCtx.ellipse(5, 9, 4, 3, 0, 0, Math.PI * 2);
+  wolfCtx.fill();
+  // Eye
+  wolfCtx.fillStyle = '#ffcc00';
+  wolfCtx.fillRect(21, 7, 1, 1);
+  wolfCanvas.refresh();
+
+  // BEAR - bulky, dark brown
+  const bearCanvas = scene.textures.createCanvas('animal_bear', 30, 24);
+  const bearCtx = bearCanvas.context;
+  bearCtx.fillStyle = '#3B2508';
+  // Body (bulky)
+  bearCtx.beginPath();
+  bearCtx.ellipse(15, 14, 12, 8, 0, 0, Math.PI * 2);
+  bearCtx.fill();
+  // Head
+  bearCtx.beginPath();
+  bearCtx.ellipse(24, 10, 5, 4.5, 0, 0, Math.PI * 2);
+  bearCtx.fill();
+  // Rounded ears
+  bearCtx.beginPath();
+  bearCtx.arc(22, 7, 2, 0, Math.PI * 2);
+  bearCtx.fill();
+  bearCtx.beginPath();
+  bearCtx.arc(26, 7, 2, 0, Math.PI * 2);
+  bearCtx.fill();
+  // Legs
+  bearCtx.fillRect(10, 20, 2.5, 4);
+  bearCtx.fillRect(18, 20, 2.5, 4);
+  // Eye
+  bearCtx.fillStyle = '#000000';
+  bearCtx.fillRect(25, 10, 1, 1);
+  bearCanvas.refresh();
+
+  // COUGAR - sleek, tan
+  const cougarCanvas = scene.textures.createCanvas('animal_cougar', 26, 14);
+  const cougarCtx = cougarCanvas.context;
+  cougarCtx.fillStyle = '#AA8844';
+  // Body
+  cougarCtx.beginPath();
+  cougarCtx.ellipse(13, 8, 10, 4, 0, 0, Math.PI * 2);
+  cougarCtx.fill();
+  // Head
+  cougarCtx.beginPath();
+  cougarCtx.ellipse(22, 6, 4, 3, 0, 0, Math.PI * 2);
+  cougarCtx.fill();
+  // Ears
+  cougarCtx.beginPath();
+  cougarCtx.moveTo(21, 4);
+  cougarCtx.lineTo(20, 2);
+  cougarCtx.lineTo(22, 4);
+  cougarCtx.fill();
+  cougarCtx.beginPath();
+  cougarCtx.moveTo(23, 4);
+  cougarCtx.lineTo(22, 2);
+  cougarCtx.lineTo(24, 4);
+  cougarCtx.fill();
+  // Legs
+  cougarCtx.fillRect(10, 10, 1.5, 4);
+  cougarCtx.fillRect(16, 10, 1.5, 4);
+  // Long tail
+  cougarCtx.strokeStyle = '#AA8844';
+  cougarCtx.lineWidth = 2;
+  cougarCtx.beginPath();
+  cougarCtx.moveTo(5, 8);
+  cougarCtx.quadraticCurveTo(3, 10, 1, 8);
+  cougarCtx.stroke();
+  // Eye
+  cougarCtx.fillStyle = '#88ff44';
+  cougarCtx.fillRect(23, 6, 1, 1);
+  cougarCanvas.refresh();
+
+  // COYOTE - similar to wolf but smaller, tan
+  const coyoteCanvas = scene.textures.createCanvas('animal_coyote', 20, 14);
+  const coyoteCtx = coyoteCanvas.context;
+  coyoteCtx.fillStyle = '#887766';
+  // Body
+  coyoteCtx.beginPath();
+  coyoteCtx.ellipse(10, 8, 7, 4, 0, 0, Math.PI * 2);
+  coyoteCtx.fill();
+  // Head
+  coyoteCtx.beginPath();
+  coyoteCtx.ellipse(16, 6, 3.5, 3, 0, 0, Math.PI * 2);
+  coyoteCtx.fill();
+  // Ears
+  coyoteCtx.beginPath();
+  coyoteCtx.moveTo(15, 4);
+  coyoteCtx.lineTo(14, 2);
+  coyoteCtx.lineTo(16, 4);
+  coyoteCtx.fill();
+  coyoteCtx.beginPath();
+  coyoteCtx.moveTo(17, 4);
+  coyoteCtx.lineTo(16, 2);
+  coyoteCtx.lineTo(18, 4);
+  coyoteCtx.fill();
+  // Legs
+  coyoteCtx.fillRect(7, 10, 1.5, 4);
+  coyoteCtx.fillRect(12, 10, 1.5, 4);
+  // Tail
+  coyoteCtx.beginPath();
+  coyoteCtx.ellipse(4, 8, 3, 2, 0, 0, Math.PI * 2);
+  coyoteCtx.fill();
+  // Eye
+  coyoteCtx.fillStyle = '#ffaa00';
+  coyoteCtx.fillRect(17, 6, 1, 1);
+  coyoteCanvas.refresh();
+
+  // RAVEN - wing shape with beak
+  const ravenCanvas = scene.textures.createCanvas('animal_raven', 12, 10);
+  const ravenCtx = ravenCanvas.context;
+  ravenCtx.fillStyle = '#222222';
+  // Body
+  ravenCtx.beginPath();
+  ravenCtx.ellipse(6, 6, 3, 2.5, 0, 0, Math.PI * 2);
+  ravenCtx.fill();
+  // Head
+  ravenCtx.beginPath();
+  ravenCtx.ellipse(9, 4, 2, 2, 0, 0, Math.PI * 2);
+  ravenCtx.fill();
+  // Beak
+  ravenCtx.fillStyle = '#444444';
+  ravenCtx.beginPath();
+  ravenCtx.moveTo(10.5, 4);
+  ravenCtx.lineTo(12, 4);
+  ravenCtx.lineTo(10.5, 5);
+  ravenCtx.fill();
+  // Wing
+  ravenCtx.fillStyle = '#222222';
+  ravenCtx.beginPath();
+  ravenCtx.ellipse(4, 6, 4, 2, -0.3, 0, Math.PI * 2);
+  ravenCtx.fill();
+  // Eye
+  ravenCtx.fillStyle = '#ffffff';
+  ravenCtx.fillRect(9.5, 4, 0.5, 0.5);
+  ravenCanvas.refresh();
+
+  // FISH - simple fish shape
+  const fishCanvas = scene.textures.createCanvas('animal_fish', 12, 8);
+  const fishCtx = fishCanvas.context;
+  fishCtx.fillStyle = '#4488AA';
+  // Body
+  fishCtx.beginPath();
+  fishCtx.ellipse(6, 4, 4, 2.5, 0, 0, Math.PI * 2);
+  fishCtx.fill();
+  // Tail
+  fishCtx.beginPath();
+  fishCtx.moveTo(2, 4);
+  fishCtx.lineTo(0, 2);
+  fishCtx.lineTo(0, 6);
+  fishCtx.closePath();
+  fishCtx.fill();
+  // Fin
+  fishCtx.beginPath();
+  fishCtx.moveTo(6, 2);
+  fishCtx.lineTo(7, 0);
+  fishCtx.lineTo(8, 2);
+  fishCtx.fill();
+  // Eye
+  fishCtx.fillStyle = '#000000';
+  fishCtx.fillRect(8, 3.5, 1, 1);
+  // Scales detail
+  fishCtx.strokeStyle = 'rgba(100, 150, 180, 0.4)';
+  fishCtx.lineWidth = 0.5;
+  for (let i = 0; i < 3; i++) {
+    fishCtx.beginPath();
+    fishCtx.arc(5 + i * 1.5, 4, 1, 0, Math.PI * 2);
+    fishCtx.stroke();
+  }
+  fishCanvas.refresh();
+}
+
 // Generate UI textures
 export function generateUITextures(scene) {
-  // Panel background
+  // Panel background - dark green-black with subtle noise
   const panelCanvas = scene.textures.createCanvas('ui_panel', 4, 4);
   const pCtx = panelCanvas.context;
-  pCtx.fillStyle = 'rgba(10, 12, 10, 0.92)';
-  pCtx.fillRect(0, 0, 4, 4);
+  const noise = new SimplexNoise(9999);
+
+  const imgData = pCtx.createImageData(4, 4);
+  const data = imgData.data;
+  for (let y = 0; y < 4; y++) {
+    for (let x = 0; x < 4; x++) {
+      const idx = (y * 4 + x) * 4;
+      const n = noise.noise2D(x * 0.5, y * 0.5) * 5;
+      data[idx] = Math.max(0, Math.min(255, 10 + n));
+      data[idx + 1] = Math.max(0, Math.min(255, 12 + n));
+      data[idx + 2] = Math.max(0, Math.min(255, 10 + n));
+      data[idx + 3] = 235;
+    }
+  }
+  pCtx.putImageData(imgData, 0, 0);
   panelCanvas.refresh();
 
-  // Slot background
+  // Slot background - dark recessed with inner shadow
   const slotCanvas = scene.textures.createCanvas('ui_slot', 48, 48);
   const sCtx = slotCanvas.context;
-  sCtx.fillStyle = 'rgba(20, 22, 20, 0.8)';
+
+  // Base dark fill
+  sCtx.fillStyle = 'rgba(20, 22, 20, 0.85)';
   sCtx.fillRect(0, 0, 48, 48);
+
+  // Inner shadow effect
+  const shadowGrad = sCtx.createLinearGradient(0, 0, 6, 6);
+  shadowGrad.addColorStop(0, 'rgba(0, 0, 0, 0.4)');
+  shadowGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+  sCtx.fillStyle = shadowGrad;
+  sCtx.fillRect(0, 0, 6, 48);
+  sCtx.fillRect(0, 0, 48, 6);
+
+  // Subtle border
   sCtx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
   sCtx.lineWidth = 1;
   sCtx.strokeRect(0.5, 0.5, 47, 47);
   slotCanvas.refresh();
 
-  // Slot highlight
-  const slotHCanvas = scene.textures.createCanvas('ui_slot_active', 48, 48);
-  const shCtx = slotHCanvas.context;
-  shCtx.fillStyle = 'rgba(30, 35, 30, 0.85)';
-  shCtx.fillRect(0, 0, 48, 48);
-  shCtx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
-  shCtx.lineWidth = 1;
-  shCtx.strokeRect(0.5, 0.5, 47, 47);
-  slotHCanvas.refresh();
-}
+  // Active slot - slightly lighter with gold tint
+  const slotActiveCanvas = scene.textures.createCanvas('ui_slot_active', 48, 48);
+  const saCtx = slotActiveCanvas.context;
 
-// Generate simple animal silhouettes
-export function generateAnimalSprites(scene) {
-  const animals = {
-    deer:     { color: '#8B6914', w: 24, h: 16 },
-    elk:      { color: '#6B4914', w: 30, h: 22 },
-    rabbit:   { color: '#AA9988', w: 12, h: 10 },
-    squirrel: { color: '#886644', w: 10, h: 8 },
-    wolf:     { color: '#555555', w: 20, h: 14 },
-    bear:     { color: '#3B2508', w: 28, h: 22 },
-    cougar:   { color: '#AA8844', w: 22, h: 12 },
-    coyote:   { color: '#887766', w: 18, h: 12 },
-    raven:    { color: '#222222', w: 10, h: 8 },
-    fish:     { color: '#4488AA', w: 10, h: 6 },
-  };
+  // Lighter base
+  saCtx.fillStyle = 'rgba(35, 38, 30, 0.9)';
+  saCtx.fillRect(0, 0, 48, 48);
 
-  for (const [name, cfg] of Object.entries(animals)) {
-    const canvas = scene.textures.createCanvas(`animal_${name}`, cfg.w, cfg.h);
-    const ctx = canvas.context;
+  // Gold-tinted border
+  saCtx.strokeStyle = 'rgba(255, 220, 120, 0.4)';
+  saCtx.lineWidth = 1.5;
+  saCtx.strokeRect(1, 1, 46, 46);
 
-    // Body ellipse
-    ctx.fillStyle = cfg.color;
-    ctx.beginPath();
-    ctx.ellipse(cfg.w / 2, cfg.h / 2, cfg.w / 2.2, cfg.h / 2.2, 0, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Head
-    ctx.beginPath();
-    ctx.ellipse(cfg.w * 0.8, cfg.h * 0.3, cfg.w / 6, cfg.h / 4, 0, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Legs for non-flying
-    if (name !== 'raven') {
-      ctx.fillStyle = cfg.color;
-      const legW = Math.max(1, cfg.w / 10);
-      ctx.fillRect(cfg.w * 0.25, cfg.h * 0.7, legW, cfg.h * 0.3);
-      ctx.fillRect(cfg.w * 0.65, cfg.h * 0.7, legW, cfg.h * 0.3);
-    }
-
-    canvas.refresh();
-  }
-}
-
-// Mulberry32 seeded RNG
-function mulberry32(seed) {
-  let s = seed;
-  return function() {
-    s = s + 0x6D2B79F5 | 0;
-    let t = Math.imul(s ^ s >>> 15, 1 | s);
-    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
-    return ((t ^ t >>> 14) >>> 0) / 4294967296;
-  };
+  // Inner highlight
+  saCtx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+  saCtx.lineWidth = 1;
+  saCtx.strokeRect(0.5, 0.5, 47, 47);
+  slotActiveCanvas.refresh();
 }

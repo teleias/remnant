@@ -1,12 +1,5 @@
-// CraftingUI — Crafting panel with category tabs, recipe list,
-// ingredient status, and craft button. Dark panel PZ aesthetic.
-
 import Phaser from 'phaser';
 import ITEMS from '../config/items.js';
-
-const PANEL_BG = 0x0a0c0a;
-const PANEL_ALPHA = 0.92;
-const BORDER_COLOR = 0x3a3f3a;
 
 const CATEGORIES = [
   { key: 'all', label: 'All' },
@@ -17,252 +10,710 @@ const CATEGORIES = [
   { key: 'clothing', label: 'Clothing' },
 ];
 
-// Map recipe output categories
-function getRecipeCategory(recipe) {
-  const outputDef = ITEMS[recipe.output];
-  if (!outputDef) return 'misc';
-
-  if (recipe.station === 'campfire') return 'food';
-  if (recipe.placeable) return 'building';
-
-  const cat = outputDef.category;
-  if (cat === 'tool' || cat === 'weapon') return 'tools';
-  if (cat === 'food' || cat === 'water') return 'food';
-  if (cat === 'medical') return 'medical';
-  if (cat === 'clothing') return 'clothing';
-  if (cat === 'material') return 'building';
-  return 'tools';
-}
-
 export default class CraftingUI {
   constructor(scene, gameState, gameEvents, craftingSystem) {
     this.scene = scene;
-    this.gs = gameState;
+    this.gameState = gameState;
     this.gameEvents = gameEvents;
-    this.crafting = craftingSystem;
+    this.craftingSystem = craftingSystem;
 
-    this.visible = false;
     this.container = null;
-    this.recipeContainer = null;
-    this.selectedCategory = 'all';
+    this.isVisible = false;
     this.selectedRecipe = null;
+    this.currentCategory = 'all';
+    this.scrollY = 0;
+    this.maxScroll = 0;
     this.recipeElements = [];
-
-    this.detailContainer = null;
-    this.craftButton = null;
+    this.tabButtons = [];
+    this.craftProgress = 0;
     this.progressBar = null;
   }
 
   create() {
-    const w = this.scene.cameras.main.width;
-    const h = this.scene.cameras.main.height;
-
-    this.container = this.scene.add.container(0, 0).setDepth(200).setVisible(false);
+    const { width, height } = this.scene.cameras.main;
 
     // Dark overlay
-    const overlay = this.scene.add.rectangle(w / 2, h / 2, w, h, 0x000000, 0.6);
-    this.container.add(overlay);
+    this.overlay = this.scene.add.rectangle(0, 0, width, height, 0x000000, 0.65)
+      .setOrigin(0, 0)
+      .setInteractive()
+      .setVisible(false)
+      .setDepth(900);
 
-    // Main panel
-    const panelW = 520;
-    const panelH = 400;
-    const px = w / 2 - panelW / 2;
-    const py = h / 2 - panelH / 2;
+    // Main container
+    this.container = this.scene.add.container(0, 0).setDepth(901).setVisible(false);
 
-    const panel = this.scene.add.rectangle(w / 2, h / 2, panelW, panelH, PANEL_BG, PANEL_ALPHA);
-    panel.setStrokeStyle(1, BORDER_COLOR);
-    this.container.add(panel);
+    // Main panel background
+    const panelW = 580;
+    const panelH = 440;
+    const panelX = width / 2;
+    const panelY = height / 2;
+
+    this.panelBg = this.scene.add.rectangle(panelX, panelY, panelW, panelH, 0x0a0c0a, 0.94)
+      .setStrokeStyle(1, 0x2a3a2a, 0.8);
+    this.container.add(this.panelBg);
 
     // Title
-    const title = this.scene.add.text(w / 2, py + 16, 'CRAFTING', {
-      fontFamily: 'Oswald, sans-serif', fontSize: '18px', color: '#c8c8c0',
-      letterSpacing: 3,
+    this.title = this.scene.add.text(panelX, panelY - panelH / 2 + 20, 'CRAFTING', {
+      fontFamily: 'Oswald',
+      fontSize: '18px',
+      color: '#d4c8a0',
+      fontStyle: 'bold'
     }).setOrigin(0.5, 0);
-    this.container.add(title);
+    this.container.add(this.title);
+
+    // Close button
+    const closeX = panelX + panelW / 2 - 20;
+    const closeY = panelY - panelH / 2 + 20;
+    this.closeBtn = this.scene.add.text(closeX, closeY, 'X', {
+      fontFamily: 'Oswald',
+      fontSize: '16px',
+      color: '#999'
+    }).setOrigin(0.5, 0)
+      .setInteractive({ useHandCursor: true })
+      .on('pointerover', () => this.closeBtn.setColor('#fff'))
+      .on('pointerout', () => this.closeBtn.setColor('#999'))
+      .on('pointerdown', () => this.toggle());
+    this.container.add(this.closeBtn);
 
     // Category tabs
-    let tabX = px + 20;
-    const tabY = py + 46;
+    this.createCategoryTabs(panelX, panelY - panelH / 2 + 50, panelW);
 
-    for (const cat of CATEGORIES) {
-      const isActive = cat.key === this.selectedCategory;
-      const tab = this.scene.add.text(tabX, tabY, cat.label, {
-        fontFamily: 'Inter, sans-serif', fontSize: '11px',
-        color: isActive ? '#d4c8a0' : '#666',
-        backgroundColor: isActive ? '#1a1c1a' : undefined,
-        padding: { x: 8, y: 4 },
-      }).setInteractive();
+    // Recipe list area (left side)
+    this.recipeListX = panelX - panelW / 2 + 20;
+    this.recipeListY = panelY - panelH / 2 + 90;
+    this.recipeListW = panelW * 0.55 - 30;
+    this.recipeListH = panelH - 160;
 
-      tab.on('pointerdown', () => {
-        this.selectedCategory = cat.key;
-        this.refreshRecipes();
-      });
-      tab.on('pointerover', () => tab.setColor('#c8c8c0'));
-      tab.on('pointerout', () => tab.setColor(cat.key === this.selectedCategory ? '#d4c8a0' : '#666'));
+    // Create scroll mask for recipe list
+    this.createRecipeListMask();
 
-      this.container.add(tab);
-      tabX += tab.width + 6;
-    }
+    // Recipe detail panel (right side)
+    this.detailPanelX = panelX + panelW / 2 - (panelW * 0.45) / 2 - 10;
+    this.detailPanelY = this.recipeListY;
+    this.detailPanelW = panelW * 0.45 - 20;
+    this.detailPanelH = this.recipeListH;
 
-    // Recipe list area (left)
-    this.recipeContainer = this.scene.add.container(0, 0);
-    this.container.add(this.recipeContainer);
-
-    // Detail panel (right)
     this.detailContainer = this.scene.add.container(0, 0);
     this.container.add(this.detailContainer);
 
     // Craft button
-    const btnX = px + panelW - 100;
-    const btnY = py + panelH - 40;
-    this.craftButton = this.scene.add.text(btnX, btnY, 'CRAFT', {
-      fontFamily: 'Oswald, sans-serif', fontSize: '14px', color: '#d4c8a0',
-      backgroundColor: '#1a2a1a',
-      padding: { x: 16, y: 6 },
-    }).setOrigin(0.5).setInteractive();
+    this.createCraftButton(panelX, panelY + panelH / 2 - 30);
 
-    this.craftButton.on('pointerdown', () => this.startCraft());
-    this.craftButton.on('pointerover', () => this.craftButton.setColor('#fff'));
-    this.craftButton.on('pointerout', () => this.craftButton.setColor('#d4c8a0'));
-    this.container.add(this.craftButton);
+    // Recipe count text
+    this.recipeCountText = this.scene.add.text(
+      panelX - panelW / 2 + 20,
+      panelY + panelH / 2 - 20,
+      '',
+      {
+        fontFamily: 'Courier',
+        fontSize: '11px',
+        color: '#666'
+      }
+    ).setOrigin(0, 0.5);
+    this.container.add(this.recipeCountText);
 
-    // Progress bar
-    const barX = px + 20;
-    const barY = py + panelH - 40;
-    this.progressBg = this.scene.add.rectangle(barX + 80, barY, 160, 12, 0x1a1c1a);
-    this.progressBg.setStrokeStyle(1, 0x2a2f2a);
-    this.container.add(this.progressBg);
+    // Event listeners
+    this.gameEvents.on('crafting:progress', this.onCraftingProgress, this);
+    this.gameEvents.on('crafting:complete', this.onCraftingComplete, this);
 
-    this.progressFill = this.scene.add.rectangle(barX + 2, barY, 0, 10, 0x4a8a4a);
-    this.progressFill.setOrigin(0, 0.5);
-    this.container.add(this.progressFill);
+    this.refreshRecipeList();
+  }
 
-    // Listen for crafting progress
-    this.gameEvents.on('crafting:progress', (data) => {
-      if (this.visible) {
-        this.progressFill.width = 156 * data.progress;
+  createCategoryTabs(centerX, y, panelW) {
+    const tabWidth = 80;
+    const tabHeight = 24;
+    const spacing = 4;
+    const totalWidth = (tabWidth + spacing) * CATEGORIES.length - spacing;
+    let startX = centerX - totalWidth / 2;
+
+    CATEGORIES.forEach((cat, i) => {
+      const tabX = startX + i * (tabWidth + spacing);
+
+      const bg = this.scene.add.rectangle(tabX, y, tabWidth, tabHeight, 0x1a1c1a, 0.8)
+        .setOrigin(0, 0);
+
+      const text = this.scene.add.text(tabX + tabWidth / 2, y + tabHeight / 2, cat.label, {
+        fontFamily: 'Oswald',
+        fontSize: '12px',
+        color: '#666'
+      }).setOrigin(0.5, 0.5);
+
+      const indicator = this.scene.add.rectangle(tabX, y + tabHeight - 2, tabWidth, 2, 0xd4c8a0, 0)
+        .setOrigin(0, 0);
+
+      const button = this.scene.add.rectangle(tabX, y, tabWidth, tabHeight, 0x000000, 0.01)
+        .setOrigin(0, 0)
+        .setInteractive({ useHandCursor: true })
+        .on('pointerdown', () => this.setCategory(cat.key));
+
+      this.container.add([bg, text, indicator, button]);
+      this.tabButtons.push({ key: cat.key, bg, text, indicator, button });
+    });
+
+    this.updateTabVisuals();
+  }
+
+  updateTabVisuals() {
+    this.tabButtons.forEach(tab => {
+      const isActive = tab.key === this.currentCategory;
+      tab.bg.setFillStyle(isActive ? 0x2a3a2a : 0x1a1c1a, 0.8);
+      tab.text.setColor(isActive ? '#d4c8a0' : '#666');
+      tab.indicator.setAlpha(isActive ? 1 : 0);
+    });
+  }
+
+  createRecipeListMask() {
+    // Create mask graphics
+    this.recipeMask = this.scene.add.graphics();
+    this.recipeMask.fillStyle(0xffffff);
+    this.recipeMask.fillRect(
+      this.recipeListX,
+      this.recipeListY,
+      this.recipeListW,
+      this.recipeListH
+    );
+
+    // Recipe list container
+    this.recipeListContainer = this.scene.add.container(0, 0);
+    this.container.add(this.recipeListContainer);
+
+    // Apply mask
+    const mask = this.recipeMask.createGeometryMask();
+    this.recipeListContainer.setMask(mask);
+
+    // Mouse wheel scrolling
+    this.scene.input.on('wheel', (pointer, gameObjects, deltaX, deltaY) => {
+      if (!this.isVisible) return;
+
+      const bounds = new Phaser.Geom.Rectangle(
+        this.recipeListX,
+        this.recipeListY,
+        this.recipeListW,
+        this.recipeListH
+      );
+
+      if (bounds.contains(pointer.x, pointer.y)) {
+        this.scrollY = Phaser.Math.Clamp(
+          this.scrollY + deltaY * 0.3,
+          0,
+          this.maxScroll
+        );
+        this.updateRecipeListScroll();
       }
     });
+  }
 
-    this.gameEvents.on('crafting:complete', () => {
-      this.progressFill.width = 0;
-      if (this.visible) this.refreshRecipes();
+  updateRecipeListScroll() {
+    this.recipeListContainer.y = -this.scrollY;
+  }
+
+  setCategory(key) {
+    this.currentCategory = key;
+    this.updateTabVisuals();
+    this.scrollY = 0;
+    this.selectedRecipe = null;
+    this.refreshRecipeList();
+  }
+
+  refreshRecipeList() {
+    // Clear existing recipe elements
+    this.recipeElements.forEach(elem => {
+      elem.bg?.destroy();
+      elem.text?.destroy();
+      elem.icon?.destroy();
+      elem.ingredients?.destroy();
+      elem.button?.destroy();
+      elem.separator?.destroy();
     });
-  }
-
-  toggle() {
-    this.visible = !this.visible;
-    this.container.setVisible(this.visible);
-    if (this.visible) {
-      this.refreshRecipes();
-    }
-    this.gameEvents.emit(this.visible ? 'ui:panelOpen' : 'ui:panelClosed', { panel: 'crafting' });
-  }
-
-  refreshRecipes() {
-    this.recipeContainer.removeAll(true);
     this.recipeElements = [];
 
-    if (!this.crafting) return;
+    // Get all available recipes
+    const allRecipes = this.craftingSystem.getAvailableRecipes();
 
-    const recipes = this.crafting.getAvailableRecipes();
-    const w = this.scene.cameras.main.width;
-    const h = this.scene.cameras.main.height;
-    const panelW = 520;
-    const px = w / 2 - panelW / 2;
-    const py = h / 2 - 200;
+    // Filter by category
+    const recipes = this.currentCategory === 'all'
+      ? allRecipes
+      : allRecipes.filter(r => this.getRecipeCategory(r) === this.currentCategory);
 
-    let listY = py + 72;
-    const listX = px + 20;
+    const rowHeight = 46;
+    const padding = 8;
+    let yOffset = this.recipeListY;
 
-    const filtered = this.selectedCategory === 'all'
-      ? recipes
-      : recipes.filter(r => getRecipeCategory(r) === this.selectedCategory);
+    recipes.forEach((recipe, i) => {
+      const y = yOffset + i * rowHeight;
 
-    for (const recipe of filtered) {
-      if (listY > py + 330) break; // Clip to panel
+      // Background
+      const bg = this.scene.add.rectangle(
+        this.recipeListX,
+        y,
+        this.recipeListW,
+        rowHeight - 2,
+        0x1a1c1a,
+        0.4
+      ).setOrigin(0, 0);
 
-      const color = recipe.craftable ? '#c8c8c0' : '#555';
-      const nameText = this.scene.add.text(listX, listY, recipe.name, {
-        fontFamily: 'Inter, sans-serif', fontSize: '12px', color,
-      }).setInteractive();
+      // Output icon
+      const outputItem = ITEMS[recipe.output];
+      const icon = this.scene.add.text(
+        this.recipeListX + padding,
+        y + padding,
+        outputItem?.icon || '?',
+        { fontSize: '16px' }
+      ).setOrigin(0, 0);
 
-      // Input summary
-      const inputParts = [];
-      for (const [itemId, status] of Object.entries(recipe.inputStatus)) {
-        const c = status.have >= status.need ? '#4a8a4a' : '#8a4a4a';
-        inputParts.push(`${status.name}: ${status.have}/${status.need}`);
+      // Recipe name
+      const nameColor = recipe.craftable ? '#d4c8a0' : '#666';
+      const text = this.scene.add.text(
+        this.recipeListX + padding + 24,
+        y + padding,
+        recipe.name,
+        {
+          fontFamily: 'Oswald',
+          fontSize: '13px',
+          color: nameColor
+        }
+      ).setOrigin(0, 0);
+
+      // Ingredient summary
+      const ingredientSummary = this.buildIngredientSummary(recipe);
+      const ingredients = this.scene.add.text(
+        this.recipeListX + padding + 24,
+        y + padding + 18,
+        ingredientSummary.text,
+        {
+          fontFamily: 'Courier',
+          fontSize: '10px',
+          color: '#888'
+        }
+      ).setOrigin(0, 0);
+
+      // Color code individual ingredients
+      if (ingredientSummary.colors.length > 0) {
+        const style = ingredients.style;
+        ingredientSummary.colors.forEach(({ start, end, color }) => {
+          style.setColor(color, start, end);
+        });
       }
-      const inputStr = inputParts.join('  ');
-      const inputText = this.scene.add.text(listX + 200, listY + 2, inputStr, {
-        fontFamily: 'IBM Plex Mono, monospace', fontSize: '9px', color: '#777',
-      });
 
-      nameText.on('pointerdown', () => {
-        this.selectedRecipe = recipe;
-        this.showRecipeDetail(recipe);
-      });
-      nameText.on('pointerover', () => nameText.setColor('#fff'));
-      nameText.on('pointerout', () => nameText.setColor(color));
+      // Separator line
+      const separator = this.scene.add.rectangle(
+        this.recipeListX,
+        y + rowHeight - 2,
+        this.recipeListW,
+        1,
+        0x2a3a2a,
+        0.5
+      ).setOrigin(0, 0);
 
-      this.recipeContainer.add(nameText);
-      this.recipeContainer.add(inputText);
-      this.recipeElements.push({ nameText, inputText, recipe });
+      // Interactive button
+      const button = this.scene.add.rectangle(
+        this.recipeListX,
+        y,
+        this.recipeListW,
+        rowHeight - 2,
+        0xffffff,
+        0.001
+      ).setOrigin(0, 0)
+        .setInteractive({ useHandCursor: true })
+        .on('pointerover', () => bg.setFillStyle(0x2a3a2a, 0.6))
+        .on('pointerout', () => {
+          if (this.selectedRecipe !== recipe) {
+            bg.setFillStyle(0x1a1c1a, 0.4);
+          }
+        })
+        .on('pointerdown', () => this.selectRecipe(recipe, bg));
 
-      listY += 22;
+      this.recipeListContainer.add([bg, icon, text, ingredients, separator, button]);
+      this.recipeElements.push({ recipe, bg, text, icon, ingredients, button, separator });
+    });
+
+    // Calculate max scroll
+    const contentHeight = recipes.length * rowHeight;
+    this.maxScroll = Math.max(0, contentHeight - this.recipeListH);
+
+    // Update recipe count
+    const craftableCount = recipes.filter(r => r.craftable).length;
+    this.recipeCountText.setText(`${craftableCount} / ${recipes.length} recipes available`);
+
+    // Update detail panel
+    if (this.selectedRecipe) {
+      const stillExists = recipes.find(r => r.id === this.selectedRecipe.id);
+      if (stillExists) {
+        this.selectRecipe(stillExists);
+      } else {
+        this.selectedRecipe = null;
+        this.updateDetailPanel();
+      }
+    } else {
+      this.updateDetailPanel();
     }
   }
 
-  showRecipeDetail(recipe) {
+  buildIngredientSummary(recipe) {
+    const parts = [];
+    const colors = [];
+    let currentPos = 0;
+
+    recipe.inputs.forEach((input, i) => {
+      const status = recipe.inputStatus[input.itemId];
+      const item = ITEMS[input.itemId];
+      const have = status?.have || 0;
+      const need = input.quantity;
+      const hasEnough = have >= need;
+
+      const text = `${item?.icon || '?'} ${have}/${need}`;
+      const color = hasEnough ? '#4a8a4a' : '#8a4a4a';
+
+      colors.push({
+        start: currentPos,
+        end: currentPos + text.length,
+        color
+      });
+
+      parts.push(text);
+      currentPos += text.length;
+
+      if (i < recipe.inputs.length - 1) {
+        parts.push('  ');
+        currentPos += 2;
+      }
+    });
+
+    return { text: parts.join(''), colors };
+  }
+
+  selectRecipe(recipe, bg = null) {
+    this.selectedRecipe = recipe;
+
+    // Update background highlights
+    this.recipeElements.forEach(elem => {
+      if (elem.recipe === recipe) {
+        elem.bg.setFillStyle(0x2a3a2a, 0.6);
+      } else {
+        elem.bg.setFillStyle(0x1a1c1a, 0.4);
+      }
+    });
+
+    this.updateDetailPanel();
+  }
+
+  updateDetailPanel() {
     this.detailContainer.removeAll(true);
 
-    const w = this.scene.cameras.main.width;
-    const h = this.scene.cameras.main.height;
-    const panelW = 520;
-    const px = w / 2 + panelW / 2 - 160;
-    const py = h / 2 - 200 + 72;
+    if (!this.selectedRecipe) {
+      const noSelection = this.scene.add.text(
+        this.detailPanelX,
+        this.detailPanelY + this.detailPanelH / 2,
+        'Select a recipe',
+        {
+          fontFamily: 'Oswald',
+          fontSize: '12px',
+          color: '#555'
+        }
+      ).setOrigin(0.5, 0.5);
+      this.detailContainer.add(noSelection);
+      this.updateCraftButton();
+      return;
+    }
+
+    const recipe = this.selectedRecipe;
+    const outputItem = ITEMS[recipe.output];
+    let y = this.detailPanelY + 10;
 
     // Recipe name
-    const name = this.scene.add.text(px, py, recipe.name, {
-      fontFamily: 'Oswald, sans-serif', fontSize: '14px', color: '#d4c8a0',
-    });
+    const name = this.scene.add.text(
+      this.detailPanelX,
+      y,
+      recipe.name,
+      {
+        fontFamily: 'Oswald',
+        fontSize: '14px',
+        color: '#d4c8a0',
+        fontStyle: 'bold'
+      }
+    ).setOrigin(0.5, 0);
     this.detailContainer.add(name);
+    y += 28;
 
     // Output
-    const outputDef = ITEMS[recipe.output];
-    const outputStr = `${outputDef?.icon || '?'} ${outputDef?.name || recipe.output} x${recipe.qty}`;
-    const output = this.scene.add.text(px, py + 22, outputStr, {
-      fontFamily: 'Inter, sans-serif', fontSize: '11px', color: '#aaa',
-    });
-    this.detailContainer.add(output);
+    const outputText = this.scene.add.text(
+      this.detailPanelX,
+      y,
+      `${outputItem?.icon || '?'} ${outputItem?.name || 'Unknown'} x${recipe.qty || 1}`,
+      {
+        fontFamily: 'Courier',
+        fontSize: '12px',
+        color: '#aaa'
+      }
+    ).setOrigin(0.5, 0);
+    this.detailContainer.add(outputText);
+    y += 26;
 
-    // Time
-    const timeStr = `Time: ${recipe.time}s`;
-    const time = this.scene.add.text(px, py + 40, timeStr, {
-      fontFamily: 'IBM Plex Mono, monospace', fontSize: '10px', color: '#666',
+    // Separator
+    const sep1 = this.scene.add.rectangle(
+      this.detailPanelX,
+      y,
+      this.detailPanelW - 20,
+      1,
+      0x2a3a2a,
+      0.6
+    ).setOrigin(0.5, 0);
+    this.detailContainer.add(sep1);
+    y += 12;
+
+    // Inputs header
+    const inputsHeader = this.scene.add.text(
+      this.detailPanelX,
+      y,
+      'REQUIRES:',
+      {
+        fontFamily: 'Oswald',
+        fontSize: '11px',
+        color: '#888'
+      }
+    ).setOrigin(0.5, 0);
+    this.detailContainer.add(inputsHeader);
+    y += 18;
+
+    // Input items
+    recipe.inputs.forEach(input => {
+      const status = recipe.inputStatus[input.itemId];
+      const item = ITEMS[input.itemId];
+      const have = status?.have || 0;
+      const need = input.quantity;
+      const hasEnough = have >= need;
+      const color = hasEnough ? '#4a8a4a' : '#8a4a4a';
+
+      const inputLine = this.scene.add.text(
+        this.detailPanelX,
+        y,
+        `${item?.icon || '?'} ${item?.name || 'Unknown'} (${have}/${need})`,
+        {
+          fontFamily: 'Courier',
+          fontSize: '11px',
+          color
+        }
+      ).setOrigin(0.5, 0);
+      this.detailContainer.add(inputLine);
+      y += 18;
     });
-    this.detailContainer.add(time);
+
+    y += 8;
+
+    // Station requirement
+    if (recipe.station) {
+      const stationText = this.scene.add.text(
+        this.detailPanelX,
+        y,
+        `Requires: ${recipe.station}`,
+        {
+          fontFamily: 'Courier',
+          fontSize: '11px',
+          color: '#888',
+          fontStyle: 'italic'
+        }
+      ).setOrigin(0.5, 0);
+      this.detailContainer.add(stationText);
+      y += 18;
+    }
+
+    // Skill requirement
+    if (recipe.skill && recipe.skillLevel > 0) {
+      const skillText = this.scene.add.text(
+        this.detailPanelX,
+        y,
+        `Skill: ${recipe.skill} Lv.${recipe.skillLevel}`,
+        {
+          fontFamily: 'Courier',
+          fontSize: '11px',
+          color: '#888',
+          fontStyle: 'italic'
+        }
+      ).setOrigin(0.5, 0);
+      this.detailContainer.add(skillText);
+      y += 18;
+    }
+
+    // Crafting time
+    if (recipe.time) {
+      const timeText = this.scene.add.text(
+        this.detailPanelX,
+        y,
+        `Time: ${recipe.time}s`,
+        {
+          fontFamily: 'Courier',
+          fontSize: '11px',
+          color: '#888'
+        }
+      ).setOrigin(0.5, 0);
+      this.detailContainer.add(timeText);
+      y += 18;
+    }
 
     // Reason if not craftable
     if (!recipe.craftable && recipe.reason) {
-      const reason = this.scene.add.text(px, py + 58, recipe.reason, {
-        fontFamily: 'Inter, sans-serif', fontSize: '10px', color: '#8a4a4a',
-      });
-      this.detailContainer.add(reason);
+      y += 8;
+      const reasonText = this.scene.add.text(
+        this.detailPanelX,
+        y,
+        recipe.reason,
+        {
+          fontFamily: 'Courier',
+          fontSize: '10px',
+          color: '#8a4a4a',
+          wordWrap: { width: this.detailPanelW - 20 },
+          align: 'center'
+        }
+      ).setOrigin(0.5, 0);
+      this.detailContainer.add(reasonText);
+      y += reasonText.height + 12;
     }
 
-    // Update craft button
-    this.craftButton.setColor(recipe.craftable ? '#d4c8a0' : '#444');
+    // Progress bar (if crafting this recipe)
+    if (this.craftingSystem.crafting && this.selectedRecipe) {
+      y += 12;
+      const progressBg = this.scene.add.rectangle(
+        this.detailPanelX,
+        y,
+        180,
+        10,
+        0x1a1c1a,
+        0.8
+      ).setOrigin(0.5, 0);
+      this.detailContainer.add(progressBg);
+
+      const progressFill = this.scene.add.rectangle(
+        this.detailPanelX - 90,
+        y,
+        180 * this.craftProgress,
+        10,
+        0x4a8a4a,
+        1
+      ).setOrigin(0, 0);
+      this.detailContainer.add(progressFill);
+      this.progressBar = progressFill;
+
+      y += 16;
+      const progressLabel = this.scene.add.text(
+        this.detailPanelX,
+        y,
+        'Crafting...',
+        {
+          fontFamily: 'Courier',
+          fontSize: '10px',
+          color: '#888'
+        }
+      ).setOrigin(0.5, 0);
+      this.detailContainer.add(progressLabel);
+    }
+
+    this.updateCraftButton();
   }
 
-  startCraft() {
-    if (!this.selectedRecipe || !this.selectedRecipe.craftable) return;
-    if (this.crafting.crafting) return;
+  createCraftButton(x, y) {
+    const btnW = 100;
+    const btnH = 26;
 
-    this.crafting.startCraft(this.selectedRecipe.id);
+    this.craftBtnBg = this.scene.add.rectangle(x + 140, y, btnW, btnH, 0x3a5a3a, 0.8)
+      .setOrigin(0.5, 0.5);
+    this.container.add(this.craftBtnBg);
+
+    this.craftBtnText = this.scene.add.text(x + 140, y, 'CRAFT', {
+      fontFamily: 'Oswald',
+      fontSize: '13px',
+      color: '#d4c8a0',
+      fontStyle: 'bold'
+    }).setOrigin(0.5, 0.5);
+    this.container.add(this.craftBtnText);
+
+    this.craftBtn = this.scene.add.rectangle(x + 140, y, btnW, btnH, 0xffffff, 0.001)
+      .setOrigin(0.5, 0.5)
+      .setInteractive({ useHandCursor: true })
+      .on('pointerover', () => {
+        if (this.canCraft()) {
+          this.craftBtnBg.setFillStyle(0x4a7a4a, 1);
+        }
+      })
+      .on('pointerout', () => {
+        this.updateCraftButton();
+      })
+      .on('pointerdown', () => {
+        if (this.canCraft()) {
+          this.craftingSystem.startCraft(this.selectedRecipe.id);
+        }
+      });
+    this.container.add(this.craftBtn);
+  }
+
+  canCraft() {
+    return this.selectedRecipe &&
+           this.selectedRecipe.craftable &&
+           !this.craftingSystem.crafting;
+  }
+
+  updateCraftButton() {
+    if (!this.craftBtnBg) return;
+
+    if (this.canCraft()) {
+      this.craftBtnBg.setFillStyle(0x3a5a3a, 0.8);
+      this.craftBtnText.setColor('#d4c8a0');
+      this.craftBtn.input.cursor = 'pointer';
+    } else {
+      this.craftBtnBg.setFillStyle(0x2a2a2a, 0.6);
+      this.craftBtnText.setColor('#555');
+      this.craftBtn.input.cursor = 'default';
+    }
+  }
+
+  getRecipeCategory(recipe) {
+    const outputItem = ITEMS[recipe.output];
+    if (!outputItem) return 'building';
+
+    const cat = outputItem.category;
+
+    if (cat === 'tool' || cat === 'weapon') return 'tools';
+    if (cat === 'food' || cat === 'water' || recipe.station === 'campfire') return 'food';
+    if (cat === 'medical') return 'medical';
+    if (cat === 'clothing') return 'clothing';
+    if (cat === 'material' || recipe.placeable) return 'building';
+
+    return 'building';
+  }
+
+  onCraftingProgress(data) {
+    this.craftProgress = data.progress;
+    if (this.progressBar) {
+      this.progressBar.width = 180 * this.craftProgress;
+    }
+  }
+
+  onCraftingComplete(data) {
+    this.craftProgress = 0;
+    this.refreshRecipeList();
+  }
+
+  toggle() {
+    this.isVisible = !this.isVisible;
+
+    if (this.isVisible) {
+      this.overlay.setVisible(true);
+      this.container.setVisible(true);
+      this.refreshRecipeList();
+      this.gameEvents.emit('ui:panelOpen', 'crafting');
+    } else {
+      this.overlay.setVisible(false);
+      this.container.setVisible(false);
+      this.selectedRecipe = null;
+      this.gameEvents.emit('ui:panelClosed', 'crafting');
+    }
   }
 
   destroy() {
-    if (this.container) this.container.destroy();
+    this.gameEvents.off('crafting:progress', this.onCraftingProgress, this);
+    this.gameEvents.off('crafting:complete', this.onCraftingComplete, this);
+
+    this.overlay?.destroy();
+    this.container?.destroy();
+    this.recipeMask?.destroy();
   }
 }

@@ -19,6 +19,7 @@ import BuildingSystem from '../systems/BuildingSystem.js';
 import AnimalSystem from '../systems/AnimalSystem.js';
 import CombatSystem from '../systems/CombatSystem.js';
 import InjurySystem from '../systems/InjurySystem.js';
+import WeatherEffects from '../systems/WeatherEffects.js';
 
 export default class GameScene extends Phaser.Scene {
   constructor() {
@@ -32,6 +33,19 @@ export default class GameScene extends Phaser.Scene {
   }
 
   create() {
+    try {
+      this._createInner();
+    } catch (e) {
+      console.error('GameScene.create() CRASH:', e);
+      // Show error on screen
+      this.add.text(20, 20, 'GAME ERROR: ' + e.message + '\n\n' + e.stack, {
+        fontFamily: 'monospace', fontSize: '12px', color: '#ff4444',
+        wordWrap: { width: this.cameras.main.width - 40 },
+      });
+    }
+  }
+
+  _createInner() {
     this.gameOver = false;
 
     // Initialize game state
@@ -44,6 +58,28 @@ export default class GameScene extends Phaser.Scene {
     // Event bus for inter-system communication
     // Note: cannot use this.events (reserved by Phaser Scene)
     this.gameEvents = new Phaser.Events.EventEmitter();
+
+    // === Input setup (must be before systems that reference scene.keys/scene.wasd) ===
+    this.cursors = this.input.keyboard.createCursorKeys();
+    this.wasd = this.input.keyboard.addKeys('W,A,S,D');
+    this.keys = this.input.keyboard.addKeys({
+      interact: Phaser.Input.Keyboard.KeyCodes.E,
+      inventory: Phaser.Input.Keyboard.KeyCodes.I,
+      tab: Phaser.Input.Keyboard.KeyCodes.TAB,
+      craft: Phaser.Input.Keyboard.KeyCodes.C,
+      build: Phaser.Input.Keyboard.KeyCodes.B,
+      save: Phaser.Input.Keyboard.KeyCodes.Q,
+      sprint: Phaser.Input.Keyboard.KeyCodes.SHIFT,
+      sneak: Phaser.Input.Keyboard.KeyCodes.CTRL,
+    });
+
+    // Number keys 1-6 for hotbar
+    this.hotbarKeys = [];
+    for (let i = 0; i < 6; i++) {
+      this.hotbarKeys.push(
+        this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ONE + i)
+      );
+    }
 
     // === Initialize systems in dependency order ===
 
@@ -98,6 +134,10 @@ export default class GameScene extends Phaser.Scene {
     this.injurySystem = new InjurySystem(this, this.gameState, this.inventorySystem);
     this.injurySystem.create();
 
+    // 13. Weather particle effects
+    this.weatherEffects = new WeatherEffects(this);
+    this.weatherEffects.create();
+
     // Render placed structures from save
     this.tileMap.renderPlacedStructures();
 
@@ -114,28 +154,6 @@ export default class GameScene extends Phaser.Scene {
       craftingSystem: this.craftingSystem,
       buildingSystem: this.buildingSystem,
     });
-
-    // === Input setup ===
-    this.cursors = this.input.keyboard.createCursorKeys();
-    this.wasd = this.input.keyboard.addKeys('W,A,S,D');
-    this.keys = this.input.keyboard.addKeys({
-      interact: Phaser.Input.Keyboard.KeyCodes.E,
-      inventory: Phaser.Input.Keyboard.KeyCodes.I,
-      tab: Phaser.Input.Keyboard.KeyCodes.TAB,
-      craft: Phaser.Input.Keyboard.KeyCodes.C,
-      build: Phaser.Input.Keyboard.KeyCodes.B,
-      save: Phaser.Input.Keyboard.KeyCodes.Q,
-      sprint: Phaser.Input.Keyboard.KeyCodes.SHIFT,
-      sneak: Phaser.Input.Keyboard.KeyCodes.CTRL,
-    });
-
-    // Number keys 1-6 for hotbar
-    this.hotbarKeys = [];
-    for (let i = 0; i < 6; i++) {
-      this.hotbarKeys.push(
-        this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ONE + i)
-      );
-    }
 
     // Zoom with scroll wheel
     this.input.on('wheel', (pointer, gameObjects, deltaX, deltaY) => {
@@ -256,5 +274,6 @@ export default class GameScene extends Phaser.Scene {
     this.animalSystem?.destroy();
     this.combatSystem?.destroy();
     this.injurySystem?.destroy();
+    this.weatherEffects?.destroy();
   }
 }

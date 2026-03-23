@@ -56,17 +56,25 @@ export default class BootScene extends Phaser.Scene {
   }
 
   create() {
-    // Generate all programmatic textures via the texture utility module
-    generateTileset(this);
-    generateTreeSprites(this);
-    generateRockSprites(this);
-    generateBushSprites(this);
-    generateCampfireSprite(this);
-    generatePlayerSprites(this);
-    generateAnimalSprites(this);
-    generateUITextures(this);
+    try {
+      // Generate all programmatic textures via the texture utility module
+      generateTileset(this);
+      generateTreeSprites(this);
+      generateRockSprites(this);
+      generateBushSprites(this);
+      generateCampfireSprite(this);
+      generatePlayerSprites(this);
+      generateAnimalSprites(this);
+      generateUITextures(this);
 
-    // Proceed to menu
-    this.scene.start('MenuScene');
+      // Proceed to menu
+      this.scene.start('MenuScene');
+    } catch (e) {
+      console.error('BootScene.create() CRASH:', e);
+      this.add.text(20, 20, 'BOOT ERROR: ' + e.message, {
+        fontFamily: 'monospace', fontSize: '14px', color: '#ff4444',
+        wordWrap: { width: this.cameras.main.width - 40 },
+      });
+    }
   }
 }

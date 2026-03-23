@@ -1,6 +1,17 @@
 // REMNANT — Main Entry Point
 // A survival game by Christian Claudio
 
+// Global error handler to surface runtime crashes
+window.addEventListener('error', (e) => {
+  const div = document.createElement('div');
+  div.style.cssText = 'position:fixed;top:20px;left:20px;right:20px;color:#ff4444;font:12px monospace;z-index:99999;white-space:pre-wrap;background:#111;padding:16px;border:1px solid #ff4444';
+  div.textContent = 'RUNTIME ERROR: ' + e.message + '\n' + (e.filename || '') + ':' + (e.lineno || '') + '\n\n' + (e.error?.stack || '');
+  document.body.appendChild(div);
+});
+window.addEventListener('unhandledrejection', (e) => {
+  console.error('Unhandled rejection:', e.reason);
+});
+
 import Phaser from 'phaser';
 import BootScene from './scenes/BootScene.js';
 import MenuScene from './scenes/MenuScene.js';
