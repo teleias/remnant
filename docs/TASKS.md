@@ -8,19 +8,19 @@ Ship each phase as a playable game. Every phase adds depth. No phase should brea
 ## PHASE 1: Foundation (Current)
 The minimum viable survival game. Player can move through an isometric world, see day/night, gather resources, manage inventory, and survive.
 
-- [ ] **1.1 Phaser Boot** — Game config, BootScene loads assets, MenuScene with start button
-- [ ] **1.2 Programmatic Tileset** — Canvas-generated isometric tiles: grass, dirt, stone, water, tree, rock, bush, wood floor, wall
-- [ ] **1.3 Isometric World Rendering** — Tilemap with 64x32 iso tiles, noise-based terrain, proper depth sorting
-- [ ] **1.4 Player Entity** — Isometric sprite (generated pixel art), 8-direction movement, walk animation, camera follow
-- [ ] **1.5 Stat System** — Health, hunger, thirst, temperature, fatigue draining over time, stat bars on HUD
-- [ ] **1.6 Time System** — Day/night cycle with lighting changes, clock on HUD, time passage
-- [ ] **1.7 Gathering** — Walk to tree/rock/bush, press E, receive items, resource depletes
-- [ ] **1.8 Inventory** — Grid inventory with weight, open/close with Tab, item tooltips, use items (eat, drink)
-- [ ] **1.9 Hotbar** — 6 slots, number keys to select, shows equipped item
-- [ ] **1.10 Basic Crafting** — Craft campfire, stone tools, bandages from inventory screen
-- [ ] **1.11 Campfire** — Place campfire in world, stand near it for warmth, cook raw meat
-- [ ] **1.12 Save/Load** — Serialize game state, POST to server, load on continue
-- [ ] **1.13 Death** — When health hits 0, show death screen with cause and days survived
+- [x] **1.1 Phaser Boot** — Game config, BootScene loads assets, MenuScene with start button
+- [x] **1.2 Programmatic Tileset** — Canvas-generated isometric tiles: grass, dirt, stone, water, tree, rock, bush, wood floor, wall
+- [x] **1.3 Isometric World Rendering** — Tilemap with 64x32 iso tiles, noise-based terrain, proper depth sorting
+- [x] **1.4 Player Entity** — Isometric sprite (generated pixel art), 8-direction movement, walk animation, camera follow
+- [x] **1.5 Stat System** — Health, hunger, thirst, temperature, fatigue draining over time, stat bars on HUD
+- [x] **1.6 Time System** — Day/night cycle with lighting changes, clock on HUD, time passage
+- [x] **1.7 Gathering** — Walk to tree/rock/bush, press E, receive items, resource depletes
+- [x] **1.8 Inventory** — Grid inventory with weight, open/close with Tab, item tooltips, use items (eat, drink)
+- [x] **1.9 Hotbar** — 6 slots, number keys to select, shows equipped item
+- [x] **1.10 Basic Crafting** — Craft campfire, stone tools, bandages from inventory screen
+- [x] **1.11 Campfire** — Place campfire in world, stand near it for warmth, cook raw meat
+- [x] **1.12 Save/Load** — Serialize game state, POST to server, load on continue
+- [x] **1.13 Death** — When health hits 0, show death screen with cause and days survived
 
 **Phase 1 Deliverable:** You can walk around, chop trees, mine rocks, eat berries, craft tools, build a campfire, cook food, stay warm, and survive through day/night cycles. Game saves your progress.
 
@@ -108,6 +108,6 @@ Dynamic weather, seasonal changes, and the subtle mystery layer.
 ---
 
 ## STATUS
-**Current Phase:** 1
-**Last Updated:** Starting build
-**Notes:** Begin with 1.1 and work sequentially. Each task builds on the previous.
+**Current Phase:** 1 (Complete)
+**Last Updated:** Phase 1 complete
+**Notes:** All Phase 1 tasks complete. Game is fully playable. Deployed to GitHub at teleias/remnant.
