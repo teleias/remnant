@@ -1,7 +1,7 @@
 // Programmatic texture generation utilities for REMNANT
 // Project Zomboid-quality isometric tiles, object sprites, and character sprites
 // All textures are created using offscreen canvas and added via scene.textures.addCanvas()
-// This avoids the white box issue that occurs with scene.textures.createCanvas() + refresh()
+// CRITICAL: In WebGL mode, refresh() MUST be called after addCanvas() to upload texture to GPU
 
 import { TILE } from '../config/constants.js';
 import { SimplexNoise } from './noise.js';
@@ -66,13 +66,18 @@ function drawDiamond(ctx, fillColor, strokeColor = null) {
 }
 
 // THE WHITE BOX FIX: Create texture using offscreen canvas and addCanvas
+// CRITICAL: In WebGL mode, we must call refresh() to upload the texture to GPU
 function createTexture(scene, name, w, h, drawFn) {
   const canvas = document.createElement('canvas');
   canvas.width = w;
   canvas.height = h;
   const ctx = canvas.getContext('2d');
   drawFn(ctx, w, h);
-  scene.textures.addCanvas(name, canvas);
+  const texture = scene.textures.addCanvas(name, canvas);
+  // WebGL requires refresh() to upload the canvas data to GPU texture
+  if (texture && typeof texture.refresh === 'function') {
+    texture.refresh();
+  }
 }
 
 // Project Zomboid-style muted earth-tone palette
