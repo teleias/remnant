@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:claude.ai)",
+      "Bash(dir:*)",
+      "Bash(npm install:*)",
+      "Bash(npx vite build)",
+      "Bash(gh:*)",
+      "Bash(powershell:*)",
+      "Bash(railway:*)",
+      "Bash(git config:*)",
+      "Bash(git init:*)",
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nREMNANT Phase 1: Complete isometric survival game\n\nFully playable isometric survival game with PZ-inspired gameplay:\n- Procedural 128x128 world generation \\(seeded noise, biomes, rivers\\)\n- Isometric tile rendering with viewport culling and sprite pooling\n- 8-directional player movement with sprint, sneak, collision\n- Survival system \\(hunger, thirst, fatigue, temperature, health\\)\n- Day/night cycle with weather transitions\n- Resource gathering \\(chop trees, mine rocks, forage bushes\\)\n- Full inventory system with equipment slots\n- Crafting system with 49 recipes and station requirements\n- Building system with ghost preview placement\n- HUD stat bars, hotbar, interaction prompts\n- Death screen with cause and survival stats\n- Save/load with server and localStorage fallback\n- Enhanced procedural textures \\(multi-layer noise, tile variants\\)\n\n🤖 Generated with [Claude Code]\\(https://claude.com/claude-code\\)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n\\)\")"
+    ]
+  }
+}
