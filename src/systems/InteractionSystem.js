@@ -1,6 +1,7 @@
 // InteractionSystem — Detects nearby interactable objects and handles
 // resource gathering (chop trees, mine rocks, pick bushes, collect water).
 
+import Phaser from 'phaser';
 import { PLAYER } from '../config/constants.js';
 import { distance } from '../utils/math.js';
 import ITEMS from '../config/items.js';

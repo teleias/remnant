@@ -1,6 +1,7 @@
 // TimeSystem — Advances game clock, manages day/night lighting overlay,
 // triggers season changes, and controls weather transitions.
 
+import Phaser from 'phaser';
 import { TIME, DEPTH } from '../config/constants.js';
 
 const SEASONS = ['spring', 'summer', 'autumn', 'winter'];

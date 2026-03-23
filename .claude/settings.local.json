@@ -17,7 +17,8 @@
       "Bash(git push:*)",
       "Bash(curl:*)",
       "Bash(python:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(node -e:*)"
     ]
   }
 }
