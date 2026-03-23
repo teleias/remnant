@@ -1,11 +1,12 @@
 // WorldGen — Procedural world generation using seeded simplex noise
-// Generates a 128x128 tile map with biome assignment and object placement
+// Generates a 256x256 tile map with biome assignment, road networks, and building placement
 
 import { WORLD, BIOME } from '../config/constants.js';
 import { SimplexNoise, fbm } from '../utils/noise.js';
 import { seededRandom, distance } from '../utils/math.js';
+import BUILDINGS from '../config/buildings.js';
 
-const MAP_SIZE = 128;
+const MAP_SIZE = 256;
 
 export default class WorldGen {
   constructor(scene, gameState) {
@@ -20,6 +21,7 @@ export default class WorldGen {
     this.objects = null;      // [y][x] object data or null
     this.walkable = null;     // [y][x] boolean
     this.tileVariants = null; // [y][x] variant index (0, 1, or 2)
+    this.buildings = [];      // Placed building instances
   }
 
   generate() {
@@ -66,7 +68,13 @@ export default class WorldGen {
     // Pass 2: Place objects (trees, rocks, bushes)
     this.placeObjects(rng);
 
-    // Pass 3: Apply world modifications from save state
+    // Pass 3: Generate road network
+    this.generateRoads(rng);
+
+    // Pass 4: Place buildings (towns along roads, cabins in wilderness)
+    this.placeBuildings(rng);
+
+    // Pass 5: Apply world modifications from save state
     this.applyWorldMods();
 
     // Set player start position at nearest walkable grass tile to center
@@ -149,6 +157,236 @@ export default class WorldGen {
           }
         }
       }
+    }
+  }
+
+  generateRoads(rng) {
+    const roadCount = 3 + Math.floor(rng() * 2); // 3-4 main roads
+
+    for (let r = 0; r < roadCount; r++) {
+      // Pick start and end on different edges
+      const edge1 = Math.floor(rng() * 4); // 0=top, 1=right, 2=bottom, 3=left
+      let edge2 = (edge1 + 1 + Math.floor(rng() * 2)) % 4; // different edge
+
+      const start = this.getEdgePoint(edge1, rng);
+      const end = this.getEdgePoint(edge2, rng);
+
+      // 1-2 control points for bezier curve
+      const cp1 = {
+        x: this.width * (0.2 + rng() * 0.6),
+        y: this.height * (0.2 + rng() * 0.6)
+      };
+      const cp2 = {
+        x: this.width * (0.2 + rng() * 0.6),
+        y: this.height * (0.2 + rng() * 0.6)
+      };
+
+      // Trace bezier curve, stamping road tiles
+      const steps = 200;
+      for (let i = 0; i <= steps; i++) {
+        const t = i / steps;
+        const x = Math.round(this.cubicBezier(t, start.x, cp1.x, cp2.x, end.x));
+        const y = Math.round(this.cubicBezier(t, start.y, cp1.y, cp2.y, end.y));
+
+        // Stamp road (2 tiles wide)
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            const rx = x + dx, ry = y + dy;
+            if (rx >= 0 && ry >= 0 && rx < this.width && ry < this.height) {
+              if (this.biomes[ry][rx] !== BIOME.WATER) {
+                this.tiles[ry][rx] = 'dirt_road';
+                this.biomes[ry][rx] = BIOME.ROAD;
+                this.walkable[ry][rx] = true;
+                this.objects[ry][rx] = null; // Clear any objects on road
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  getEdgePoint(edge, rng) {
+    const margin = 10;
+    const range = (edge % 2 === 0) ? this.width : this.height;
+    const pos = margin + rng() * (range - margin * 2);
+    switch (edge) {
+      case 0: return { x: pos, y: margin }; // top
+      case 1: return { x: this.width - margin, y: pos }; // right
+      case 2: return { x: pos, y: this.height - margin }; // bottom
+      case 3: return { x: margin, y: pos }; // left
+    }
+  }
+
+  cubicBezier(t, p0, p1, p2, p3) {
+    const mt = 1 - t;
+    return mt*mt*mt*p0 + 3*mt*mt*t*p1 + 3*mt*t*t*p2 + t*t*t*p3;
+  }
+
+  placeBuildings(rng) {
+    const buildingTypes = Object.keys(BUILDINGS);
+    const placed = []; // Track placed building centers for spacing
+
+    // Attempt to place buildings
+    const maxAttempts = 500;
+    let totalPlaced = 0;
+    const targetCount = 40 + Math.floor(rng() * 20); // 40-60 buildings
+
+    for (let attempt = 0; attempt < maxAttempts && totalPlaced < targetCount; attempt++) {
+      // Pick a random building type
+      const typeKey = buildingTypes[Math.floor(rng() * buildingTypes.length)];
+      const template = BUILDINGS[typeKey];
+
+      // Skip based on frequency (rarer buildings placed less often)
+      if (rng() > template.frequency * 2) continue;
+
+      // Pick a random position
+      const margin = 15;
+      const px = margin + Math.floor(rng() * (this.width - margin * 2 - template.width));
+      const py = margin + Math.floor(rng() * (this.height - margin * 2 - template.height));
+
+      // Check biome compatibility
+      const centerBiome = this.biomes[py + Math.floor(template.height/2)]?.[px + Math.floor(template.width/2)];
+      const biomeName = centerBiome?.toLowerCase() || '';
+
+      // Map internal biome names to building biome tags
+      const biomeMatch = template.biomes.some(b => {
+        if (b === 'town' || b === 'road') return biomeName === 'road' || this.isNearRoad(px, py, 8);
+        if (b === 'forest') return biomeName === 'forest' || biomeName === 'dense_forest';
+        if (b === 'dense_forest') return biomeName === 'dense_forest';
+        if (b === 'meadow') return biomeName === 'meadow';
+        if (b === 'mountain') return biomeName === 'mountain';
+        return false;
+      });
+      if (!biomeMatch) continue;
+
+      // Check minimum spacing from other buildings
+      const minSpacing = 12;
+      const tooClose = placed.some(p => {
+        const dx = Math.abs(p.x - px);
+        const dy = Math.abs(p.y - py);
+        return dx < minSpacing && dy < minSpacing;
+      });
+      if (tooClose) continue;
+
+      // Check footprint is valid (no water, within bounds)
+      let valid = true;
+      for (let by = 0; by < template.height && valid; by++) {
+        for (let bx = 0; bx < template.width && valid; bx++) {
+          const wx = px + bx, wy = py + by;
+          if (wx >= this.width || wy >= this.height) { valid = false; break; }
+          if (this.biomes[wy][wx] === BIOME.WATER) { valid = false; break; }
+        }
+      }
+      if (!valid) continue;
+
+      // PLACE THE BUILDING
+      this.stampBuilding(px, py, typeKey, template, rng);
+      placed.push({ x: px, y: py, type: typeKey });
+      totalPlaced++;
+    }
+
+    this.buildings = placed;
+    console.log(`Placed ${totalPlaced} buildings`);
+  }
+
+  isNearRoad(x, y, range) {
+    for (let dy = -range; dy <= range; dy++) {
+      for (let dx = -range; dx <= range; dx++) {
+        const nx = x + dx, ny = y + dy;
+        if (nx >= 0 && ny >= 0 && nx < this.width && ny < this.height) {
+          if (this.biomes[ny][nx] === BIOME.ROAD) return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  stampBuilding(px, py, typeKey, template, rng) {
+    // Step 1: Floor - fill interior with wood_floor or tile_floor
+    const floorType = rng() > 0.5 ? 'wood_floor' : 'tile_floor';
+    for (let by = 0; by < template.height; by++) {
+      for (let bx = 0; bx < template.width; bx++) {
+        const wx = px + bx, wy = py + by;
+        if (wx < this.width && wy < this.height) {
+          this.tiles[wy][wx] = floorType;
+          this.walkable[wy][wx] = true;
+          this.objects[wy][wx] = null; // Clear trees/rocks
+        }
+      }
+    }
+
+    // Step 2: Walls - perimeter
+    const wallVariant = rng() > 0.6 ? 'stone' : 'wood';
+    for (let bx = 0; bx < template.width; bx++) {
+      this.setWall(px + bx, py, wallVariant); // top
+      this.setWall(px + bx, py + template.height - 1, wallVariant); // bottom
+    }
+    for (let by = 0; by < template.height; by++) {
+      this.setWall(px, py + by, wallVariant); // left
+      this.setWall(px + template.width - 1, py + by, wallVariant); // right
+    }
+
+    // Interior walls between rooms
+    for (let i = 1; i < template.rooms.length; i++) {
+      const room = template.rooms[i];
+      // Draw walls along room boundaries (only if they're interior)
+      if (room.x > 0) {
+        for (let by = room.y; by < room.y + room.h; by++) {
+          this.setWall(px + room.x, py + by, wallVariant);
+        }
+      }
+      if (room.y > 0) {
+        for (let bx = room.x; bx < room.x + room.w; bx++) {
+          this.setWall(px + bx, py + room.y, wallVariant);
+        }
+      }
+    }
+
+    // Step 3: Doors (make walkable, set door object)
+    for (const door of template.doors) {
+      const dx = px + door.x, dy = py + door.y;
+      if (dx < this.width && dy < this.height) {
+        this.objects[dy][dx] = { type: 'door', open: true, variant: 0 };
+        this.walkable[dy][dx] = true;
+      }
+    }
+
+    // Step 4: Containers (place 1-2 per room on interior tiles)
+    for (const room of template.rooms) {
+      if (!room.containers) continue;
+      const containerCount = Math.min(room.containers.length, Math.floor(room.w * room.h * 0.3));
+
+      for (let c = 0; c < containerCount; c++) {
+        // Find a free interior tile in this room
+        for (let tries = 0; tries < 10; tries++) {
+          const rx = room.x + 1 + Math.floor(rng() * Math.max(1, room.w - 2));
+          const ry = room.y + 1 + Math.floor(rng() * Math.max(1, room.h - 2));
+          const wx = px + rx, wy = py + ry;
+
+          if (wx > 0 && wy > 0 && wx < this.width - 1 && wy < this.height - 1) {
+            if (!this.objects[wy][wx] || this.objects[wy][wx].type === undefined) {
+              const containerType = room.containers[c % room.containers.length];
+              this.objects[wy][wx] = {
+                type: 'container',
+                containerType,
+                looted: false,
+                variant: 0
+              };
+              // Containers are walkable (player can interact)
+              this.walkable[wy][wx] = true;
+              break;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  setWall(x, y, variant) {
+    if (x >= 0 && y >= 0 && x < this.width && y < this.height) {
+      this.objects[y][x] = { type: 'wall', variant, hp: 100, maxHp: 100 };
+      this.walkable[y][x] = false;
     }
   }
 
@@ -235,7 +473,7 @@ export default class WorldGen {
   }
 
   getTileType(gx, gy) {
-    if (gx < 0 || gy < 0 || gx >= this.width || gy >= this.height) return null;
+    if (gx < 0 || gy < 0 || gx >= this.width || gy >= this.height) return 'water_deep';
     return this.tiles[Math.floor(gy)][Math.floor(gx)];
   }
 
@@ -245,7 +483,7 @@ export default class WorldGen {
   }
 
   getBiome(gx, gy) {
-    if (gx < 0 || gy < 0 || gx >= this.width || gy >= this.height) return null;
+    if (gx < 0 || gy < 0 || gx >= this.width || gy >= this.height) return BIOME.WATER;
     return this.biomes[Math.floor(gy)][Math.floor(gx)];
   }
 
@@ -277,5 +515,6 @@ export default class WorldGen {
     this.objects = null;
     this.walkable = null;
     this.tileVariants = null;
+    this.buildings = null;
   }
 }

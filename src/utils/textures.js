@@ -400,6 +400,316 @@ function generateBuildingTiles(scene, noise, rng) {
   drawDiamond(roofCtx, '#4a3020', '#3a2010');
   fillWithAdvancedNoise(roofCtx, '#4a3020', noise, 9000, 0);
   roofCanvas.refresh();
+
+  // Dirt road tiles
+  const drCanvas = scene.textures.createCanvas('tile_dirt_road_0', TILE.WIDTH, TILE.HEIGHT);
+  const drCtx = drCanvas.context;
+  drawDiamond(drCtx, '#7a6040', '#6a5030');
+  fillWithAdvancedNoise(drCtx, '#7a6040', noise, 10000, 0);
+  // Tire track lines
+  drCtx.strokeStyle = 'rgba(0, 0, 0, 0.2)';
+  drCtx.lineWidth = 1;
+  drCtx.beginPath();
+  drCtx.moveTo(HALF_W * 0.4, HALF_H * 0.6);
+  drCtx.lineTo(HALF_W * 1.6, HALF_H * 1.4);
+  drCtx.stroke();
+  drCtx.beginPath();
+  drCtx.moveTo(HALF_W * 0.5, HALF_H * 0.8);
+  drCtx.lineTo(HALF_W * 1.5, HALF_H * 1.6);
+  drCtx.stroke();
+  drCanvas.refresh();
+
+  const dr2Canvas = scene.textures.createCanvas('tile_dirt_road_1', TILE.WIDTH, TILE.HEIGHT);
+  const dr2Ctx = dr2Canvas.context;
+  drawDiamond(dr2Ctx, '#6a5535', '#5a4525');
+  fillWithAdvancedNoise(dr2Ctx, '#6a5535', noise, 11000, 0);
+  // Gravel dots
+  for (let i = 0; i < 12; i++) {
+    const gx = HALF_W + (rng() - 0.5) * HALF_W;
+    const gy = HALF_H + (rng() - 0.5) * HALF_H * 0.6;
+    if (insideDiamond(gx, gy)) {
+      dr2Ctx.fillStyle = `rgba(${100 + rng()*40}, ${90 + rng()*30}, ${70 + rng()*20}, 0.5)`;
+      dr2Ctx.fillRect(gx, gy, 1.5, 1.5);
+    }
+  }
+  dr2Canvas.refresh();
+
+  // 3D isometric wall - wood
+  const owwCanvas = scene.textures.createCanvas('obj_wall_wood', TILE.WIDTH, TILE.HEIGHT + 16);
+  const owwCtx = owwCanvas.context;
+  // Wall face (top portion - vertical surface)
+  owwCtx.fillStyle = '#5a4020';
+  owwCtx.beginPath();
+  owwCtx.moveTo(0, HALF_H);          // left
+  owwCtx.lineTo(HALF_W, 0);          // top
+  owwCtx.lineTo(TILE.WIDTH, HALF_H); // right
+  owwCtx.lineTo(TILE.WIDTH, HALF_H + 16); // right bottom
+  owwCtx.lineTo(HALF_W, TILE.HEIGHT + 16); // bottom center
+  owwCtx.lineTo(0, HALF_H + 16);     // left bottom
+  owwCtx.closePath();
+  owwCtx.fill();
+  // Front face darker
+  owwCtx.fillStyle = '#4a3515';
+  owwCtx.beginPath();
+  owwCtx.moveTo(0, HALF_H);
+  owwCtx.lineTo(HALF_W, TILE.HEIGHT);
+  owwCtx.lineTo(HALF_W, TILE.HEIGHT + 16);
+  owwCtx.lineTo(0, HALF_H + 16);
+  owwCtx.closePath();
+  owwCtx.fill();
+  // Side face slightly lighter
+  owwCtx.fillStyle = '#6a5030';
+  owwCtx.beginPath();
+  owwCtx.moveTo(HALF_W, TILE.HEIGHT);
+  owwCtx.lineTo(TILE.WIDTH, HALF_H);
+  owwCtx.lineTo(TILE.WIDTH, HALF_H + 16);
+  owwCtx.lineTo(HALF_W, TILE.HEIGHT + 16);
+  owwCtx.closePath();
+  owwCtx.fill();
+  // Plank lines on front face
+  owwCtx.strokeStyle = 'rgba(0,0,0,0.15)';
+  owwCtx.lineWidth = 0.5;
+  for (let i = 1; i <= 3; i++) {
+    const y = HALF_H + i * 4;
+    owwCtx.beginPath();
+    owwCtx.moveTo(2, y);
+    owwCtx.lineTo(HALF_W - 2, y + 8);
+    owwCtx.stroke();
+  }
+  // Top edge highlight
+  owwCtx.strokeStyle = 'rgba(255,255,255,0.1)';
+  owwCtx.beginPath();
+  owwCtx.moveTo(0, HALF_H);
+  owwCtx.lineTo(HALF_W, 0);
+  owwCtx.lineTo(TILE.WIDTH, HALF_H);
+  owwCtx.stroke();
+  owwCanvas.refresh();
+
+  // 3D isometric wall - stone
+  const owsCanvas = scene.textures.createCanvas('obj_wall_stone', TILE.WIDTH, TILE.HEIGHT + 16);
+  const owsCtx = owsCanvas.context;
+  owsCtx.fillStyle = '#6a6a6a';
+  owsCtx.beginPath();
+  owsCtx.moveTo(0, HALF_H);
+  owsCtx.lineTo(HALF_W, 0);
+  owsCtx.lineTo(TILE.WIDTH, HALF_H);
+  owsCtx.lineTo(TILE.WIDTH, HALF_H + 16);
+  owsCtx.lineTo(HALF_W, TILE.HEIGHT + 16);
+  owsCtx.lineTo(0, HALF_H + 16);
+  owsCtx.closePath();
+  owsCtx.fill();
+  owsCtx.fillStyle = '#555555';
+  owsCtx.beginPath();
+  owsCtx.moveTo(0, HALF_H);
+  owsCtx.lineTo(HALF_W, TILE.HEIGHT);
+  owsCtx.lineTo(HALF_W, TILE.HEIGHT + 16);
+  owsCtx.lineTo(0, HALF_H + 16);
+  owsCtx.closePath();
+  owsCtx.fill();
+  owsCtx.fillStyle = '#757575';
+  owsCtx.beginPath();
+  owsCtx.moveTo(HALF_W, TILE.HEIGHT);
+  owsCtx.lineTo(TILE.WIDTH, HALF_H);
+  owsCtx.lineTo(TILE.WIDTH, HALF_H + 16);
+  owsCtx.lineTo(HALF_W, TILE.HEIGHT + 16);
+  owsCtx.closePath();
+  owsCtx.fill();
+  // Brick lines
+  owsCtx.strokeStyle = 'rgba(0,0,0,0.2)';
+  owsCtx.lineWidth = 0.5;
+  for (let i = 1; i <= 3; i++) {
+    const y = HALF_H + i * 4;
+    owsCtx.beginPath();
+    owsCtx.moveTo(2, y);
+    owsCtx.lineTo(HALF_W - 2, y + 8);
+    owsCtx.stroke();
+    owsCtx.beginPath();
+    owsCtx.moveTo(HALF_W + 2, y + 8);
+    owsCtx.lineTo(TILE.WIDTH - 2, y);
+    owsCtx.stroke();
+  }
+  owsCtx.strokeStyle = 'rgba(255,255,255,0.08)';
+  owsCtx.beginPath();
+  owsCtx.moveTo(0, HALF_H);
+  owsCtx.lineTo(HALF_W, 0);
+  owsCtx.lineTo(TILE.WIDTH, HALF_H);
+  owsCtx.stroke();
+  owsCanvas.refresh();
+
+  // Door sprite (opening in wall)
+  const doorCanvas = scene.textures.createCanvas('obj_door', TILE.WIDTH, TILE.HEIGHT + 16);
+  const doorCtx = doorCanvas.context;
+  // Draw like wall but with a dark opening in center
+  doorCtx.fillStyle = '#5a4020';
+  doorCtx.beginPath();
+  doorCtx.moveTo(0, HALF_H);
+  doorCtx.lineTo(HALF_W, 0);
+  doorCtx.lineTo(TILE.WIDTH, HALF_H);
+  doorCtx.lineTo(TILE.WIDTH, HALF_H + 16);
+  doorCtx.lineTo(HALF_W, TILE.HEIGHT + 16);
+  doorCtx.lineTo(0, HALF_H + 16);
+  doorCtx.closePath();
+  doorCtx.fill();
+  // Dark opening in front face
+  doorCtx.fillStyle = '#1a1510';
+  doorCtx.beginPath();
+  doorCtx.moveTo(8, HALF_H + 4);
+  doorCtx.lineTo(HALF_W - 4, TILE.HEIGHT + 2);
+  doorCtx.lineTo(HALF_W - 4, TILE.HEIGHT + 14);
+  doorCtx.lineTo(8, HALF_H + 14);
+  doorCtx.closePath();
+  doorCtx.fill();
+  // Door frame
+  doorCtx.strokeStyle = '#3a2a10';
+  doorCtx.lineWidth = 1;
+  doorCtx.stroke();
+  doorCanvas.refresh();
+
+  // Container (crate/shelf)
+  const contCanvas = scene.textures.createCanvas('obj_container', 24, 28);
+  const contCtx = contCanvas.context;
+  // Crate body
+  contCtx.fillStyle = '#6a5030';
+  contCtx.fillRect(2, 8, 20, 18);
+  // Top face
+  contCtx.fillStyle = '#7a6040';
+  contCtx.beginPath();
+  contCtx.moveTo(2, 8);
+  contCtx.lineTo(12, 2);
+  contCtx.lineTo(22, 8);
+  contCtx.lineTo(12, 14);
+  contCtx.closePath();
+  contCtx.fill();
+  // Cross boards
+  contCtx.strokeStyle = '#4a3520';
+  contCtx.lineWidth = 1;
+  contCtx.beginPath();
+  contCtx.moveTo(4, 10);
+  contCtx.lineTo(20, 24);
+  contCtx.moveTo(20, 10);
+  contCtx.lineTo(4, 24);
+  contCtx.stroke();
+  // Outline
+  contCtx.strokeStyle = 'rgba(0,0,0,0.3)';
+  contCtx.strokeRect(2, 8, 20, 18);
+  contCanvas.refresh();
+
+  // Bed furniture
+  const bedCanvas = scene.textures.createCanvas('obj_furniture_bed', 32, 20);
+  const bedCtx = bedCanvas.context;
+  bedCtx.fillStyle = '#3a2a1a';
+  bedCtx.fillRect(0, 4, 32, 16); // frame
+  bedCtx.fillStyle = '#8a8a7a';
+  bedCtx.fillRect(2, 2, 28, 14); // mattress
+  bedCtx.fillStyle = '#6a7a6a';
+  bedCtx.fillRect(2, 2, 8, 14); // pillow
+  bedCtx.strokeStyle = 'rgba(0,0,0,0.2)';
+  bedCtx.strokeRect(2, 2, 28, 14);
+  bedCanvas.refresh();
+
+  // Table furniture
+  const tableCanvas = scene.textures.createCanvas('obj_furniture_table', 24, 16);
+  const tableCtx = tableCanvas.context;
+  tableCtx.fillStyle = '#5a4530';
+  tableCtx.fillRect(2, 0, 20, 10); // top
+  tableCtx.fillStyle = '#4a3520';
+  tableCtx.fillRect(3, 10, 2, 6); // leg
+  tableCtx.fillRect(19, 10, 2, 6); // leg
+  tableCtx.strokeStyle = 'rgba(0,0,0,0.2)';
+  tableCtx.strokeRect(2, 0, 20, 10);
+  tableCanvas.refresh();
+
+  // Vehicle sprites
+  // Sedan
+  const sedanCanvas = scene.textures.createCanvas('obj_car_sedan', 48, 28);
+  const sedanCtx = sedanCanvas.context;
+  // Body
+  sedanCtx.fillStyle = '#3a5a7a';
+  sedanCtx.beginPath();
+  sedanCtx.moveTo(4, 18);
+  sedanCtx.lineTo(8, 8);
+  sedanCtx.lineTo(16, 4);
+  sedanCtx.lineTo(32, 4);
+  sedanCtx.lineTo(40, 8);
+  sedanCtx.lineTo(44, 14);
+  sedanCtx.lineTo(44, 22);
+  sedanCtx.lineTo(4, 22);
+  sedanCtx.closePath();
+  sedanCtx.fill();
+  // Windows
+  sedanCtx.fillStyle = '#1a2a3a';
+  sedanCtx.fillRect(12, 6, 10, 8);
+  sedanCtx.fillRect(24, 6, 10, 8);
+  // Wheels
+  sedanCtx.fillStyle = '#1a1a1a';
+  sedanCtx.beginPath(); sedanCtx.arc(12, 22, 4, 0, Math.PI*2); sedanCtx.fill();
+  sedanCtx.beginPath(); sedanCtx.arc(36, 22, 4, 0, Math.PI*2); sedanCtx.fill();
+  // Rust patches
+  sedanCtx.fillStyle = 'rgba(120, 60, 30, 0.3)';
+  sedanCtx.fillRect(20, 16, 6, 4);
+  sedanCtx.fillRect(38, 12, 4, 6);
+  sedanCanvas.refresh();
+
+  // Truck
+  const truckCanvas = scene.textures.createCanvas('obj_car_truck', 52, 30);
+  const truckCtx = truckCanvas.context;
+  truckCtx.fillStyle = '#4a3a2a';
+  // Cab
+  truckCtx.fillRect(2, 8, 18, 16);
+  truckCtx.fillStyle = '#1a2a3a';
+  truckCtx.fillRect(6, 10, 10, 8); // window
+  // Bed
+  truckCtx.fillStyle = '#3a2a1a';
+  truckCtx.fillRect(20, 12, 28, 14);
+  truckCtx.fillStyle = '#2a1a0a';
+  truckCtx.fillRect(20, 12, 28, 2); // bed rail
+  // Wheels
+  truckCtx.fillStyle = '#1a1a1a';
+  truckCtx.beginPath(); truckCtx.arc(12, 24, 4, 0, Math.PI*2); truckCtx.fill();
+  truckCtx.beginPath(); truckCtx.arc(40, 24, 4, 0, Math.PI*2); truckCtx.fill();
+  truckCanvas.refresh();
+
+  // Van
+  const vanCanvas = scene.textures.createCanvas('obj_car_van', 50, 32);
+  const vanCtx = vanCanvas.context;
+  vanCtx.fillStyle = '#5a5050';
+  vanCtx.fillRect(2, 4, 46, 22);
+  vanCtx.fillStyle = '#1a2a3a';
+  vanCtx.fillRect(6, 6, 10, 8); // front window
+  vanCtx.fillRect(18, 6, 6, 6); // side window
+  vanCtx.fillRect(26, 6, 6, 6);
+  vanCtx.fillStyle = '#1a1a1a';
+  vanCtx.beginPath(); vanCtx.arc(14, 26, 4, 0, Math.PI*2); vanCtx.fill();
+  vanCtx.beginPath(); vanCtx.arc(38, 26, 4, 0, Math.PI*2); vanCtx.fill();
+  vanCanvas.refresh();
+
+  // Wreck
+  const wreckCanvas = scene.textures.createCanvas('obj_car_wreck', 40, 24);
+  const wreckCtx = wreckCanvas.context;
+  wreckCtx.fillStyle = '#6a3a2a';
+  // Mangled body
+  wreckCtx.beginPath();
+  wreckCtx.moveTo(4, 16);
+  wreckCtx.lineTo(6, 6);
+  wreckCtx.lineTo(14, 2);
+  wreckCtx.lineTo(28, 4);
+  wreckCtx.lineTo(36, 10);
+  wreckCtx.lineTo(36, 20);
+  wreckCtx.lineTo(4, 20);
+  wreckCtx.closePath();
+  wreckCtx.fill();
+  // Burn marks
+  wreckCtx.fillStyle = 'rgba(20, 15, 10, 0.5)';
+  wreckCtx.fillRect(10, 8, 12, 8);
+  wreckCtx.fillRect(26, 6, 6, 10);
+  // Broken window
+  wreckCtx.strokeStyle = '#1a2a3a';
+  wreckCtx.lineWidth = 1;
+  wreckCtx.strokeRect(12, 4, 8, 6);
+  // Wheels (one missing)
+  wreckCtx.fillStyle = '#1a1a1a';
+  wreckCtx.beginPath(); wreckCtx.arc(10, 20, 3, 0, Math.PI*2); wreckCtx.fill();
+  wreckCanvas.refresh();
 }
 
 // Generate tree sprites (3 variants: round deciduous, tall pine, wide oak)
@@ -926,10 +1236,10 @@ export function generateCampfireSprite(scene) {
 // Generate improved player sprite with 4 directional frames
 export function generatePlayerSprites(scene) {
   const dirs = ['S', 'W', 'N', 'E'];
-  const size = 32;
+  const size = 48;
 
   for (let d = 0; d < dirs.length; d++) {
-    const canvas = scene.textures.createCanvas(`player_${dirs[d]}`, size, size + 8);
+    const canvas = scene.textures.createCanvas(`player_${dirs[d]}`, size, size + 16);
     const ctx = canvas.context;
     const cx = size / 2;
 
@@ -945,67 +1255,67 @@ export function generatePlayerSprites(scene) {
       // SOUTH - front facing
 
       // Head with gradient for depth
-      const headGrad = ctx.createRadialGradient(cx - 1, 8, 1, cx, 9, 6);
+      const headGrad = ctx.createRadialGradient(cx - 1.5, 12, 1.5, cx, 14, 9);
       headGrad.addColorStop(0, '#eeccaa');
       headGrad.addColorStop(1, skinColor);
       ctx.fillStyle = headGrad;
       ctx.beginPath();
-      ctx.arc(cx, 9, 6, 0, Math.PI * 2);
+      ctx.arc(cx, 14, 9, 0, Math.PI * 2);
       ctx.fill();
 
       // Hair on top
       ctx.fillStyle = hairColor;
       ctx.beginPath();
-      ctx.arc(cx, 5, 6, 0, Math.PI);
+      ctx.arc(cx, 8, 9, 0, Math.PI);
       ctx.fill();
 
       // Eyes
       ctx.fillStyle = '#000000';
-      ctx.fillRect(cx - 3, 8, 1.5, 1.5);
-      ctx.fillRect(cx + 1.5, 8, 1.5, 1.5);
+      ctx.fillRect(cx - 4.5, 12, 2.25, 2.25);
+      ctx.fillRect(cx + 2.25, 12, 2.25, 2.25);
 
       // Torso with shading
       ctx.fillStyle = shirtColor;
-      ctx.fillRect(cx - 6, 15, 12, 10);
+      ctx.fillRect(cx - 9, 23, 18, 15);
       ctx.fillStyle = shirtShadow;
-      ctx.fillRect(cx - 6, 15, 2, 10);
-      ctx.fillRect(cx + 4, 15, 2, 10);
+      ctx.fillRect(cx - 9, 23, 3, 15);
+      ctx.fillRect(cx + 6, 23, 3, 15);
 
       // Collar detail
       ctx.fillStyle = shirtShadow;
-      ctx.fillRect(cx - 2, 15, 4, 1);
+      ctx.fillRect(cx - 3, 23, 6, 1.5);
 
       // Arms with rounded shoulders
       ctx.fillStyle = shirtColor;
       ctx.beginPath();
-      ctx.arc(cx - 7, 17, 2.5, 0, Math.PI * 2);
+      ctx.arc(cx - 10.5, 26, 3.75, 0, Math.PI * 2);
       ctx.fill();
-      ctx.fillRect(cx - 9, 17, 3, 7);
+      ctx.fillRect(cx - 13.5, 26, 4.5, 10.5);
 
       ctx.beginPath();
-      ctx.arc(cx + 7, 17, 2.5, 0, Math.PI * 2);
+      ctx.arc(cx + 10.5, 26, 3.75, 0, Math.PI * 2);
       ctx.fill();
-      ctx.fillRect(cx + 6, 17, 3, 7);
+      ctx.fillRect(cx + 9, 26, 4.5, 10.5);
 
       // Hands
       ctx.fillStyle = skinColor;
-      ctx.fillRect(cx - 9, 24, 3, 2.5);
-      ctx.fillRect(cx + 6, 24, 3, 2.5);
+      ctx.fillRect(cx - 13.5, 36, 4.5, 3.75);
+      ctx.fillRect(cx + 9, 36, 4.5, 3.75);
 
       // Legs
       ctx.fillStyle = pantsColor;
-      ctx.fillRect(cx - 5, 25, 4, 8);
-      ctx.fillRect(cx + 1, 25, 4, 8);
+      ctx.fillRect(cx - 7.5, 38, 6, 12);
+      ctx.fillRect(cx + 1.5, 38, 6, 12);
 
       // Boots with sole detail
       ctx.fillStyle = bootColor;
-      ctx.fillRect(cx - 6, 32, 5, 4);
-      ctx.fillRect(cx + 1, 32, 5, 4);
+      ctx.fillRect(cx - 9, 48, 7.5, 6);
+      ctx.fillRect(cx + 1.5, 48, 7.5, 6);
 
       // Boot soles
       ctx.fillStyle = '#1a0a00';
-      ctx.fillRect(cx - 6, 35, 5, 1);
-      ctx.fillRect(cx + 1, 35, 5, 1);
+      ctx.fillRect(cx - 9, 53, 7.5, 1.5);
+      ctx.fillRect(cx + 1.5, 53, 7.5, 1.5);
 
     } else if (dirs[d] === 'N') {
       // NORTH - back facing
@@ -1013,120 +1323,120 @@ export function generatePlayerSprites(scene) {
       // Head (mostly hair from back)
       ctx.fillStyle = hairColor;
       ctx.beginPath();
-      ctx.arc(cx, 9, 6, 0, Math.PI * 2);
+      ctx.arc(cx, 14, 9, 0, Math.PI * 2);
       ctx.fill();
 
       // Neck
       ctx.fillStyle = skinColor;
-      ctx.fillRect(cx - 2, 13, 4, 2);
+      ctx.fillRect(cx - 3, 20, 6, 3);
 
       // Torso
       ctx.fillStyle = shirtColor;
-      ctx.fillRect(cx - 6, 15, 12, 10);
+      ctx.fillRect(cx - 9, 23, 18, 15);
       ctx.fillStyle = shirtShadow;
-      ctx.fillRect(cx - 1, 15, 2, 10);
+      ctx.fillRect(cx - 1.5, 23, 3, 15);
 
       // Arms
       ctx.fillStyle = shirtColor;
       ctx.beginPath();
-      ctx.arc(cx - 7, 17, 2.5, 0, Math.PI * 2);
+      ctx.arc(cx - 10.5, 26, 3.75, 0, Math.PI * 2);
       ctx.fill();
-      ctx.fillRect(cx - 9, 17, 3, 7);
+      ctx.fillRect(cx - 13.5, 26, 4.5, 10.5);
 
       ctx.beginPath();
-      ctx.arc(cx + 7, 17, 2.5, 0, Math.PI * 2);
+      ctx.arc(cx + 10.5, 26, 3.75, 0, Math.PI * 2);
       ctx.fill();
-      ctx.fillRect(cx + 6, 17, 3, 7);
+      ctx.fillRect(cx + 9, 26, 4.5, 10.5);
 
       // Hands
       ctx.fillStyle = skinColor;
-      ctx.fillRect(cx - 9, 24, 3, 2.5);
-      ctx.fillRect(cx + 6, 24, 3, 2.5);
+      ctx.fillRect(cx - 13.5, 36, 4.5, 3.75);
+      ctx.fillRect(cx + 9, 36, 4.5, 3.75);
 
       // Legs
       ctx.fillStyle = pantsColor;
-      ctx.fillRect(cx - 5, 25, 4, 8);
-      ctx.fillRect(cx + 1, 25, 4, 8);
+      ctx.fillRect(cx - 7.5, 38, 6, 12);
+      ctx.fillRect(cx + 1.5, 38, 6, 12);
 
       // Boots
       ctx.fillStyle = bootColor;
-      ctx.fillRect(cx - 6, 32, 5, 4);
-      ctx.fillRect(cx + 1, 32, 5, 4);
+      ctx.fillRect(cx - 9, 48, 7.5, 6);
+      ctx.fillRect(cx + 1.5, 48, 7.5, 6);
       ctx.fillStyle = '#1a0a00';
-      ctx.fillRect(cx - 6, 35, 5, 1);
-      ctx.fillRect(cx + 1, 35, 5, 1);
+      ctx.fillRect(cx - 9, 53, 7.5, 1.5);
+      ctx.fillRect(cx + 1.5, 53, 7.5, 1.5);
 
     } else {
       // WEST or EAST - side facing
       const flip = dirs[d] === 'E' ? 1 : -1;
-      const ox = dirs[d] === 'E' ? 2 : -2;
+      const ox = dirs[d] === 'E' ? 3 : -3;
 
       // Head
-      const headGradSide = ctx.createRadialGradient(cx + ox - flip, 8, 1, cx + ox, 9, 6);
+      const headGradSide = ctx.createRadialGradient(cx + ox - flip * 1.5, 12, 1.5, cx + ox, 14, 9);
       headGradSide.addColorStop(0, '#eeccaa');
       headGradSide.addColorStop(1, skinColor);
       ctx.fillStyle = headGradSide;
       ctx.beginPath();
-      ctx.arc(cx + ox, 9, 6, 0, Math.PI * 2);
+      ctx.arc(cx + ox, 14, 9, 0, Math.PI * 2);
       ctx.fill();
 
       // Hair profile
       ctx.fillStyle = hairColor;
       if (dirs[d] === 'W') {
         ctx.beginPath();
-        ctx.arc(cx + ox - 3, 6, 5, 0, Math.PI);
+        ctx.arc(cx + ox - 4.5, 9, 7.5, 0, Math.PI);
         ctx.fill();
-        ctx.fillRect(cx + ox - 6, 6, 6, 4);
-        ctx.fillRect(cx + ox + 1, 6, 3, 6);
+        ctx.fillRect(cx + ox - 9, 9, 9, 6);
+        ctx.fillRect(cx + ox + 1.5, 9, 4.5, 9);
       } else {
         ctx.beginPath();
-        ctx.arc(cx + ox + 3, 6, 5, 0, Math.PI);
+        ctx.arc(cx + ox + 4.5, 9, 7.5, 0, Math.PI);
         ctx.fill();
-        ctx.fillRect(cx + ox, 6, 6, 4);
-        ctx.fillRect(cx + ox - 4, 6, 3, 6);
+        ctx.fillRect(cx + ox, 9, 9, 6);
+        ctx.fillRect(cx + ox - 6, 9, 4.5, 9);
       }
 
       // Eye
       ctx.fillStyle = '#000000';
-      ctx.fillRect(cx + ox + flip * 2, 9, 1.5, 1);
+      ctx.fillRect(cx + ox + flip * 3, 14, 2.25, 1.5);
 
       // Torso
       ctx.fillStyle = shirtColor;
-      ctx.fillRect(cx + ox - 5, 15, 10, 10);
+      ctx.fillRect(cx + ox - 7.5, 23, 15, 15);
       ctx.fillStyle = shirtShadow;
-      ctx.fillRect(cx + ox + (flip > 0 ? 3 : -5), 15, 2, 10);
+      ctx.fillRect(cx + ox + (flip > 0 ? 4.5 : -7.5), 23, 3, 15);
 
       // Visible arm
       ctx.fillStyle = shirtColor;
-      const armX = dirs[d] === 'E' ? cx + ox + 4 : cx + ox - 7;
+      const armX = dirs[d] === 'E' ? cx + ox + 6 : cx + ox - 10.5;
       ctx.beginPath();
-      ctx.arc(armX + 1, 17, 2.5, 0, Math.PI * 2);
+      ctx.arc(armX + 1.5, 26, 3.75, 0, Math.PI * 2);
       ctx.fill();
-      ctx.fillRect(armX, 17, 3, 7);
+      ctx.fillRect(armX, 26, 4.5, 10.5);
 
       // Hand
       ctx.fillStyle = skinColor;
-      ctx.fillRect(armX, 24, 3, 2.5);
+      ctx.fillRect(armX, 36, 4.5, 3.75);
 
       // Legs
       ctx.fillStyle = pantsColor;
-      ctx.fillRect(cx + ox - 4, 25, 3.5, 8);
-      ctx.fillRect(cx + ox + 1, 25, 3.5, 8);
+      ctx.fillRect(cx + ox - 6, 38, 5.25, 12);
+      ctx.fillRect(cx + ox + 1.5, 38, 5.25, 12);
 
       // Boots
       ctx.fillStyle = bootColor;
-      ctx.fillRect(cx + ox - 5, 32, 4, 4);
-      ctx.fillRect(cx + ox + 1, 32, 4, 4);
+      ctx.fillRect(cx + ox - 7.5, 48, 6, 6);
+      ctx.fillRect(cx + ox + 1.5, 48, 6, 6);
       ctx.fillStyle = '#1a0a00';
-      ctx.fillRect(cx + ox - 5, 35, 4, 1);
-      ctx.fillRect(cx + ox + 1, 35, 4, 1);
+      ctx.fillRect(cx + ox - 7.5, 53, 6, 1.5);
+      ctx.fillRect(cx + ox + 1.5, 53, 6, 1.5);
     }
 
     canvas.refresh();
   }
 
   // Default 'player' texture (south facing)
-  const defaultCanvas = scene.textures.createCanvas('player', size, size + 8);
+  const defaultCanvas = scene.textures.createCanvas('player', size, size + 16);
   const dCtx = defaultCanvas.context;
   const southTexture = scene.textures.get('player_S');
   if (southTexture) {

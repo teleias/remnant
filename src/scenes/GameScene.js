@@ -144,7 +144,7 @@ export default class GameScene extends Phaser.Scene {
     // === Camera setup ===
     const bounds = this.tileMap.getWorldBounds();
     this.cameras.main.setBounds(bounds.x, bounds.y, bounds.width, bounds.height);
-    this.cameras.main.setZoom(1);
+    this.cameras.main.setZoom(1.8);
 
     // === Launch UI overlay scene ===
     this.scene.launch('UIScene', {
@@ -158,7 +158,7 @@ export default class GameScene extends Phaser.Scene {
     // Zoom with scroll wheel
     this.input.on('wheel', (pointer, gameObjects, deltaX, deltaY) => {
       const cam = this.cameras.main;
-      const newZoom = Phaser.Math.Clamp(cam.zoom - deltaY * 0.001, 0.5, 2);
+      const newZoom = Phaser.Math.Clamp(cam.zoom - deltaY * 0.001, 1.0, 3.0);
       cam.setZoom(newZoom);
     });
 

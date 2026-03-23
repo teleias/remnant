@@ -25,7 +25,7 @@ export default class PlayerSystem {
     this.sprite = this.scene.add.image(pos.x, pos.y, 'player_S')
       .setOrigin(0.5, 1.0)
       .setDepth(DEPTH.ENTITIES + isoDepth(this.gs.player.gridX, this.gs.player.gridY))
-      .setScale(1.2);
+;
 
     // Camera follow with smooth lerp
     this.scene.cameras.main.startFollow(this.sprite, true, 0.08, 0.08);

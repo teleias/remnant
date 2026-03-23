@@ -8,8 +8,8 @@ export function createDefaultGameState() {
     player: {
       x: 0,
       y: 0,
-      gridX: 50,         // Starting tile position
-      gridY: 50,
+      gridX: 128,        // Starting tile position (center of 256x256 map)
+      gridY: 128,
       direction: 'S',
       moving: false,
       sneaking: false,

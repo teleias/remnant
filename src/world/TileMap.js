@@ -4,9 +4,10 @@
 import { TILE, DEPTH } from '../config/constants.js';
 import { gridToScreen, screenToGrid, isoDepth } from '../utils/math.js';
 
-const POOL_TILES = 1400;
-const POOL_OBJECTS = 500;
+const POOL_TILES = 2400;
+const POOL_OBJECTS = 800;
 const TILE_PAD = 3;  // Extra tiles to render beyond viewport edge
+const BORDER_PAD = 12; // Tiles beyond map edge to render (water border)
 
 export default class TileMap {
   constructor(scene, worldGen) {
@@ -64,11 +65,11 @@ export default class TileMap {
     let minGY = Math.floor(Math.min(topLeft.y, topRight.y, bottomLeft.y, bottomRight.y)) - TILE_PAD;
     let maxGY = Math.ceil(Math.max(topLeft.y, topRight.y, bottomLeft.y, bottomRight.y)) + TILE_PAD;
 
-    // Clamp to world bounds
-    minGX = Math.max(0, minGX);
-    minGY = Math.max(0, minGY);
-    maxGX = Math.min(this.worldGen.width - 1, maxGX);
-    maxGY = Math.min(this.worldGen.height - 1, maxGY);
+    // Extend beyond map edges to render water border (no black void)
+    minGX = Math.max(-BORDER_PAD, minGX);
+    minGY = Math.max(-BORDER_PAD, minGY);
+    maxGX = Math.min(this.worldGen.width - 1 + BORDER_PAD, maxGX);
+    maxGY = Math.min(this.worldGen.height - 1 + BORDER_PAD, maxGY);
 
     // Skip update if bounds haven't changed
     if (minGX === this.lastMinGX && minGY === this.lastMinGY &&
@@ -142,9 +143,10 @@ export default class TileMap {
           if (!sprite) continue;
 
           const pos = gridToScreen(gx, gy);
+          const depth = this.getObjectDepth(obj, gx, gy);
           sprite.setTexture(textureName)
             .setPosition(pos.x, pos.y)
-            .setDepth(DEPTH.OBJECTS + isoDepth(gx, gy))
+            .setDepth(depth)
             .setVisible(true)
             .setActive(true);
 
@@ -174,7 +176,26 @@ export default class TileMap {
     if (obj.type === 'rock') return `obj_rock_${obj.variant || 0}`;
     if (obj.type === 'bush') return `obj_bush_${obj.variant || 0}`;
     if (obj.type === 'campfire') return 'obj_campfire';
+    // Building components
+    if (obj.type === 'wall') return `obj_wall_${obj.variant || 'wood'}`;
+    if (obj.type === 'door') return 'obj_door';
+    if (obj.type === 'container') return 'obj_container';
+    if (obj.type === 'furniture') return `obj_furniture_${obj.furnitureType || 'table'}`;
+    // Vehicles
+    if (obj.isVehicle || obj.type?.startsWith('car_')) {
+      const tex = `obj_${obj.type}`;
+      if (this.scene.textures.exists(tex)) return tex;
+      return 'obj_car_wreck';
+    }
     return 'obj_tree_0';
+  }
+
+  getObjectDepth(obj, gx, gy) {
+    // Walls and doors use WALLS depth layer for proper occlusion
+    if (obj.type === 'wall' || obj.type === 'door') {
+      return DEPTH.WALLS + isoDepth(gx, gy);
+    }
+    return DEPTH.OBJECTS + isoDepth(gx, gy);
   }
 
   getTileFromPool() {
@@ -237,17 +258,18 @@ export default class TileMap {
   }
 
   getWorldBounds() {
-    // Compute the screen-space bounding box of the entire isometric map
-    const topPos = gridToScreen(0, 0);
-    const rightPos = gridToScreen(this.worldGen.width - 1, 0);
-    const bottomPos = gridToScreen(this.worldGen.width - 1, this.worldGen.height - 1);
-    const leftPos = gridToScreen(0, this.worldGen.height - 1);
+    // Compute the screen-space bounding box including water border
+    const pad = BORDER_PAD;
+    const topPos = gridToScreen(-pad, -pad);
+    const rightPos = gridToScreen(this.worldGen.width - 1 + pad, -pad);
+    const bottomPos = gridToScreen(this.worldGen.width - 1 + pad, this.worldGen.height - 1 + pad);
+    const leftPos = gridToScreen(-pad, this.worldGen.height - 1 + pad);
 
     return {
-      x: leftPos.x - TILE.WIDTH,
-      y: topPos.y - TILE.HEIGHT,
-      width: (rightPos.x - leftPos.x) + TILE.WIDTH * 2,
-      height: (bottomPos.y - topPos.y) + TILE.HEIGHT * 2,
+      x: leftPos.x - TILE.WIDTH * 2,
+      y: topPos.y - TILE.HEIGHT * 2,
+      width: (rightPos.x - leftPos.x) + TILE.WIDTH * 4,
+      height: (bottomPos.y - topPos.y) + TILE.HEIGHT * 4,
     };
   }
 
