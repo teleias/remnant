@@ -354,11 +354,12 @@ export default class CraftingUI {
     const colors = [];
     let currentPos = 0;
 
-    recipe.inputs.forEach((input, i) => {
-      const status = recipe.inputStatus[input.itemId];
-      const item = ITEMS[input.itemId];
+    const entries = Object.entries(recipe.inputs);
+    entries.forEach(([itemId, qty], i) => {
+      const status = recipe.inputStatus[itemId];
+      const item = ITEMS[itemId];
       const have = status?.have || 0;
-      const need = input.quantity;
+      const need = qty;
       const hasEnough = have >= need;
 
       const text = `${item?.icon || '?'} ${have}/${need}`;
@@ -373,7 +374,7 @@ export default class CraftingUI {
       parts.push(text);
       currentPos += text.length;
 
-      if (i < recipe.inputs.length - 1) {
+      if (i < entries.length - 1) {
         parts.push('  ');
         currentPos += 2;
       }
@@ -476,11 +477,11 @@ export default class CraftingUI {
     y += 18;
 
     // Input items
-    recipe.inputs.forEach(input => {
-      const status = recipe.inputStatus[input.itemId];
-      const item = ITEMS[input.itemId];
+    Object.entries(recipe.inputs).forEach(([itemId, qty]) => {
+      const status = recipe.inputStatus[itemId];
+      const item = ITEMS[itemId];
       const have = status?.have || 0;
-      const need = input.quantity;
+      const need = qty;
       const hasEnough = have >= need;
       const color = hasEnough ? '#4a8a4a' : '#8a4a4a';
 
