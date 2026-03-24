@@ -15,8 +15,25 @@ const OBJECT_BUSH_HEIGHT = 22
 # References
 var world_generator: WorldGenerator
 var world_node: Node2D
-var tile_layer: TileMapLayer
 var object_container: Node2D
+
+# Viewport culling system
+var camera_target: Node2D = null  # Set via set_camera_target()
+var last_camera_gx: int = -9999
+var last_camera_gy: int = -9999
+const VIEW_RADIUS: int = 15  # Tiles visible in each direction (~30x30 grid)
+
+# Tile sprite pool
+var tile_sprite_pool: Array[Sprite2D] = []
+var active_tile_sprites: Dictionary = {}  # {"gx,gy": Sprite2D}
+const TILE_POOL_SIZE: int = 1024  # ~32x32 visible area
+
+# Object sprite pool and spatial index
+var object_sprite_pool: Array[Sprite2D] = []
+var active_object_sprites: Dictionary = {}  # {"gx,gy": Sprite2D}
+var object_spatial_index: Dictionary = {}  # {"gx,gy": {type, variant, rotation}}
+const OBJECT_POOL_SIZE: int = 512
+const OBJECT_VIEW_RADIUS: int = 30
 
 func _ready():
 	print("TileManager: Generating procedural textures...")
@@ -370,7 +387,7 @@ func build_world(world_gen: WorldGenerator, parent: Node2D):
 	world_generator = world_gen
 	world_node = parent
 
-	print("TileManager: Building world...")
+	print("TileManager: Building world with viewport culling...")
 
 	# Create object container (Y-sort for depth)
 	object_container = Node2D.new()
@@ -378,50 +395,221 @@ func build_world(world_gen: WorldGenerator, parent: Node2D):
 	object_container.y_sort_enabled = true
 	world_node.add_child(object_container)
 
-	# Spawn tiles (using Sprite2D nodes for now - could optimize to TileMap later)
-	spawn_tiles()
+	# Initialize sprite pools
+	_initialize_tile_pool()
+	_initialize_object_pool()
 
-	# Spawn objects
-	spawn_objects()
+	# Build spatial index for objects
+	_build_object_spatial_index()
 
-	print("TileManager: World built")
+	# Initial render (will be updated in _process when camera_target is set)
+	print("TileManager: World built (sprite pools created, awaiting camera target)")
 
-func spawn_tiles():
-	for y in range(256):
-		for x in range(256):
-			var tile_id = world_generator.get_tile(x, y)
+func _initialize_tile_pool():
+	"""Create reusable pool of tile sprites"""
+	for i in range(TILE_POOL_SIZE):
+		var sprite = Sprite2D.new()
+		sprite.z_index = -1
+		sprite.visible = false
+		world_node.add_child(sprite)
+		tile_sprite_pool.append(sprite)
+	print("TileManager: Created tile sprite pool (", TILE_POOL_SIZE, " sprites)")
+
+func _initialize_object_pool():
+	"""Create reusable pool of object sprites"""
+	for i in range(OBJECT_POOL_SIZE):
+		var sprite = Sprite2D.new()
+		sprite.z_index = 0
+		sprite.visible = false
+		object_container.add_child(sprite)
+		object_sprite_pool.append(sprite)
+	print("TileManager: Created object sprite pool (", OBJECT_POOL_SIZE, " sprites)")
+
+func _build_object_spatial_index():
+	"""Index all objects by grid position for fast lookup"""
+	# Index regular objects
+	for obj in world_generator.objects:
+		var key = str(obj.gx) + "," + str(obj.gy)
+		object_spatial_index[key] = {
+			"type": obj.type,
+			"variant": obj.variant if obj.has("variant") else 0,
+			"is_vehicle": false
+		}
+
+	# Index vehicles
+	for veh in world_generator.vehicles:
+		var key = str(veh.gx) + "," + str(veh.gy)
+		object_spatial_index[key] = {
+			"type": veh.type,
+			"variant": 0,
+			"rotation": veh.rotation,
+			"is_vehicle": true
+		}
+
+	print("TileManager: Built spatial index (", object_spatial_index.size(), " objects)")
+
+func set_camera_target(node: Node2D):
+	"""Set the player/camera node to track for viewport culling"""
+	camera_target = node
+	print("TileManager: Camera target set, viewport culling enabled")
+
+func _process(_delta):
+	if camera_target == null or world_generator == null:
+		return
+
+	# Convert camera position to grid coordinates
+	var screen_pos = camera_target.global_position
+	var camera_gx = _screen_to_grid_x(screen_pos)
+	var camera_gy = _screen_to_grid_y(screen_pos)
+
+	# Only update when camera moves to a new grid cell
+	if camera_gx == last_camera_gx and camera_gy == last_camera_gy:
+		return
+
+	last_camera_gx = camera_gx
+	last_camera_gy = camera_gy
+
+	# Update visible tiles and objects
+	_update_visible_tiles(camera_gx, camera_gy)
+	_update_visible_objects(camera_gx, camera_gy)
+
+func _screen_to_grid_x(screen_pos: Vector2) -> int:
+	"""Convert screen position to grid X (approximate inverse of grid_to_screen)"""
+	var sx = screen_pos.x
+	var sy = screen_pos.y
+	# Inverse isometric transformation
+	var gx = (sx / (TILE_WIDTH / 2) + sy / (TILE_HEIGHT / 2)) / 2
+	return int(gx)
+
+func _screen_to_grid_y(screen_pos: Vector2) -> int:
+	"""Convert screen position to grid Y (approximate inverse of grid_to_screen)"""
+	var sx = screen_pos.x
+	var sy = screen_pos.y
+	# Inverse isometric transformation
+	var gy = (sy / (TILE_HEIGHT / 2) - sx / (TILE_WIDTH / 2)) / 2
+	return int(gy)
+
+func _update_visible_tiles(center_gx: int, center_gy: int):
+	"""Update tile sprites to show only visible tiles around camera"""
+	var new_active_tiles: Dictionary = {}
+
+	# Determine visible tile range
+	var min_gx = max(0, center_gx - VIEW_RADIUS)
+	var max_gx = min(255, center_gx + VIEW_RADIUS)
+	var min_gy = max(0, center_gy - VIEW_RADIUS)
+	var max_gy = min(255, center_gy + VIEW_RADIUS)
+
+	# Collect sprites that went out of view for recycling
+	var free_sprites: Array[Sprite2D] = []
+	for key in active_tile_sprites.keys():
+		var parts = key.split(",")
+		var gx = int(parts[0])
+		var gy = int(parts[1])
+		if gx < min_gx or gx > max_gx or gy < min_gy or gy > max_gy:
+			active_tile_sprites[key].visible = false
+			free_sprites.append(active_tile_sprites[key])
+		else:
+			new_active_tiles[key] = active_tile_sprites[key]
+
+	# Also collect unused pool sprites
+	for spr in tile_sprite_pool:
+		if not spr.visible:
+			free_sprites.append(spr)
+
+	var free_idx = 0
+
+	# Render visible tiles
+	for gy in range(min_gy, max_gy + 1):
+		for gx in range(min_gx, max_gx + 1):
+			var key = str(gx) + "," + str(gy)
+
+			# Skip if already active
+			if new_active_tiles.has(key):
+				continue
+
+			if free_idx >= free_sprites.size():
+				break
+
+			# Get tile data
+			var tile_id = world_generator.get_tile(gx, gy)
 			var tile_name = get_tile_name(tile_id)
 
 			if tile_textures.has(tile_name):
-				var sprite = Sprite2D.new()
+				var sprite = free_sprites[free_idx]
+				free_idx += 1
 				sprite.texture = tile_textures[tile_name]
-				sprite.position = grid_to_screen(x, y, world_generator.get_elevation(x, y))
-				sprite.z_index = -1  # Below objects
-				world_node.add_child(sprite)
+				sprite.position = grid_to_screen(gx, gy, world_generator.get_elevation(gx, gy))
+				sprite.visible = true
+				new_active_tiles[key] = sprite
 
-func spawn_objects():
-	for obj in world_generator.objects:
-		var obj_key = obj.type
-		if obj.has("variant"):
-			obj_key += "_" + str(obj.variant)
+	active_tile_sprites = new_active_tiles
 
-		if object_textures.has(obj_key):
-			var sprite = Sprite2D.new()
-			sprite.texture = object_textures[obj_key]
-			sprite.position = grid_to_screen(obj.gx, obj.gy, world_generator.get_elevation(obj.gx, obj.gy))
-			sprite.z_index = 0
-			object_container.add_child(sprite)
+func _update_visible_objects(center_gx: int, center_gy: int):
+	"""Update object sprites to show only visible objects around camera"""
+	var new_active_objects: Dictionary = {}
 
-	# Spawn vehicles
-	for veh in world_generator.vehicles:
-		var veh_key = veh.type
-		if object_textures.has(veh_key):
-			var sprite = Sprite2D.new()
-			sprite.texture = object_textures[veh_key]
-			sprite.position = grid_to_screen(veh.gx, veh.gy, world_generator.get_elevation(veh.gx, veh.gy))
-			sprite.rotation = veh.rotation * PI / 2.0
-			sprite.z_index = 0
-			object_container.add_child(sprite)
+	# Determine visible object range
+	var min_gx = max(0, center_gx - OBJECT_VIEW_RADIUS)
+	var max_gx = min(255, center_gx + OBJECT_VIEW_RADIUS)
+	var min_gy = max(0, center_gy - OBJECT_VIEW_RADIUS)
+	var max_gy = min(255, center_gy + OBJECT_VIEW_RADIUS)
+
+	# Collect sprites that went out of view for recycling
+	var free_sprites: Array[Sprite2D] = []
+	for key in active_object_sprites.keys():
+		var parts = key.split(",")
+		var gx = int(parts[0])
+		var gy = int(parts[1])
+		if gx < min_gx or gx > max_gx or gy < min_gy or gy > max_gy:
+			active_object_sprites[key].visible = false
+			free_sprites.append(active_object_sprites[key])
+		else:
+			new_active_objects[key] = active_object_sprites[key]
+
+	# Also collect unused pool sprites
+	for spr in object_sprite_pool:
+		if not spr.visible:
+			free_sprites.append(spr)
+
+	var free_idx = 0
+
+	# Render visible objects
+	for gy in range(min_gy, max_gy + 1):
+		for gx in range(min_gx, max_gx + 1):
+			var key = str(gx) + "," + str(gy)
+
+			# Check if object exists at this position
+			if not object_spatial_index.has(key):
+				continue
+
+			# Skip if already active
+			if new_active_objects.has(key):
+				continue
+
+			if free_idx >= free_sprites.size():
+				break
+
+			var obj_data = object_spatial_index[key]
+			var obj_key = obj_data.type
+			if obj_data.has("variant") and obj_data.variant > 0:
+				obj_key += "_" + str(obj_data.variant)
+
+			if object_textures.has(obj_key):
+				var sprite = free_sprites[free_idx]
+				free_idx += 1
+				sprite.texture = object_textures[obj_key]
+				sprite.position = grid_to_screen(gx, gy, world_generator.get_elevation(gx, gy))
+
+				# Apply rotation for vehicles
+				if obj_data.is_vehicle and obj_data.has("rotation"):
+					sprite.rotation = obj_data.rotation * PI / 2.0
+				else:
+					sprite.rotation = 0.0
+
+				sprite.visible = true
+				new_active_objects[key] = sprite
+
+	active_object_sprites = new_active_objects
 
 func get_tile_name(tile_id: int) -> String:
 	match tile_id:

@@ -20,12 +20,6 @@ grow_horizontal = 2
 grow_vertical = 2
 color = Color(0.08, 0.1, 0.08, 1)
 
-[node name="Particles" type="GPUParticles2D" parent="Background"]
-position = Vector2(512, 300)
-amount = 50
-process_material = null
-lifetime = 10.0
-
 [node name="Content" type="VBoxContainer" parent="."]
 layout_mode = 1
 anchors_preset = 8

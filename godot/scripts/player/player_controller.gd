@@ -34,6 +34,9 @@ var elevation_grid: Array = []
 var world_size: int = 256
 
 func _ready():
+	# Create procedural player sprite
+	create_player_texture()
+
 	# Sync with GameState
 	var gs = get_node("/root/GameState") if has_node("/root/GameState") else null
 	if gs:
@@ -216,6 +219,60 @@ func set_walkability_grid(grid: Array, size: int):
 func set_elevation_grid(grid: Array, size: int):
 	elevation_grid = grid
 	world_size = size
+
+func create_player_texture():
+	# Create a simple humanoid sprite procedurally (24x40 pixels)
+	var width = 24
+	var height = 40
+	var img = Image.create(width, height, false, Image.FORMAT_RGBA8)
+
+	# Colors
+	var skin_color = Color(0.85, 0.65, 0.5, 1)  # Tan skin
+	var clothing_color = Color(0.2, 0.4, 0.2, 1)  # Dark green clothing
+	var hair_color = Color(0.3, 0.2, 0.1, 1)  # Brown hair
+
+	# Draw head (circle at top, centered)
+	var head_radius = 4
+	var head_center_x = width / 2
+	var head_center_y = 6
+	for x in range(width):
+		for y in range(height):
+			var dx = x - head_center_x
+			var dy = y - head_center_y
+			var dist = sqrt(dx * dx + dy * dy)
+
+			# Head
+			if dist <= head_radius:
+				img.set_pixel(x, y, skin_color)
+
+			# Hair (top of head)
+			if dist <= head_radius and y < head_center_y:
+				img.set_pixel(x, y, hair_color)
+
+			# Body (rectangle below head)
+			if x >= 8 and x < 16 and y >= 12 and y < 28:
+				img.set_pixel(x, y, clothing_color)
+
+			# Left leg
+			if x >= 8 and x < 11 and y >= 28 and y < 38:
+				img.set_pixel(x, y, clothing_color)
+
+			# Right leg
+			if x >= 13 and x < 16 and y >= 28 and y < 38:
+				img.set_pixel(x, y, clothing_color)
+
+			# Left arm
+			if x >= 5 and x < 8 and y >= 14 and y < 26:
+				img.set_pixel(x, y, skin_color)
+
+			# Right arm
+			if x >= 16 and x < 19 and y >= 14 and y < 26:
+				img.set_pixel(x, y, skin_color)
+
+	# Create texture from image
+	var texture = ImageTexture.create_from_image(img)
+	sprite.texture = texture
+	sprite.centered = true
 
 func teleport_to(gx: float, gy: float):
 	grid_x = gx

@@ -69,6 +69,8 @@ func _ready() -> void:
 			var spawn_pos = tile_manager.grid_to_screen(int(gs.player_grid_x), int(gs.player_grid_y),
 				world_generator.get_elevation(int(gs.player_grid_x), int(gs.player_grid_y)))
 			player.global_position = spawn_pos
+		# Set camera target for viewport culling
+		tile_manager.set_camera_target(player)
 	else:
 		push_error("Player not found in scene tree!")
 

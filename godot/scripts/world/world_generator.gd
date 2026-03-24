@@ -19,6 +19,9 @@ var buildings: Array = []  # {type, gx, gy, width, height, rotation}
 var roads: Array = []  # {gx, gy}
 var vehicles: Array = []  # {type, gx, gy, rotation}
 
+# Spatial index for O(1) object placement checks: "gx,gy" -> object_type
+var _occupied: Dictionary = {}
+
 # Noise generators
 var noise_terrain: FastNoiseLite
 var noise_moisture: FastNoiseLite
@@ -79,6 +82,9 @@ func generate(seed_val: int):
 	elevation.resize(total)
 	moisture.resize(total)
 	walkability.resize(total)
+
+	# Clear spatial index
+	_occupied.clear()
 
 	# Generate terrain
 	generate_terrain()
@@ -281,6 +287,7 @@ func place_buildings():
 				var door_idx = door_y * WORLD_SIZE + door_x
 				walkability[door_idx] = 1
 				objects.append({"type": "door", "gx": door_x, "gy": door_y, "variant": 0})
+				_occupied[str(door_x) + "," + str(door_y)] = "door"
 
 func can_place_building(gx: int, gy: int, w: int, h: int) -> bool:
 	for dy in range(-2, h + 2):
@@ -313,6 +320,7 @@ func place_furniture():
 			var fy = gy + 1 + randi() % max(1, h - 2)
 			var ftype = furniture_types[randi() % furniture_types.size()]
 			objects.append({"type": ftype, "gx": fx, "gy": fy, "variant": 0})
+			_occupied[str(fx) + "," + str(fy)] = ftype
 
 func place_objects():
 	for y in range(WORLD_SIZE):
@@ -340,6 +348,7 @@ func place_objects():
 				# Check minimum spacing (reduced to 1 tile for density)
 				if check_spacing(x, y, 1, "tree"):
 					objects.append({"type": "tree", "gx": x, "gy": y, "variant": randi() % 4})
+					_occupied[str(x) + "," + str(y)] = "tree"
 					walkability[idx] = 0
 
 			# Rock placement
@@ -355,6 +364,7 @@ func place_objects():
 			if randf() < rock_chance:
 				if check_spacing(x, y, 2, "rock"):
 					objects.append({"type": "rock", "gx": x, "gy": y, "variant": randi() % 2})
+					_occupied[str(x) + "," + str(y)] = "rock"
 					walkability[idx] = 0
 
 			# Bush placement
@@ -370,13 +380,16 @@ func place_objects():
 			if randf() < bush_chance:
 				if check_spacing(x, y, 1, "bush"):
 					objects.append({"type": "bush", "gx": x, "gy": y, "variant": randi() % 2})
+					_occupied[str(x) + "," + str(y)] = "bush"
 
 func check_spacing(gx: int, gy: int, min_dist: int, obj_type: String) -> bool:
-	for obj in objects:
-		if obj.type == obj_type:
-			var dx = abs(obj.gx - gx)
-			var dy = abs(obj.gy - gy)
-			if dx < min_dist and dy < min_dist:
+	# Use spatial grid lookup - only check cells within min_dist radius
+	for dy in range(-min_dist + 1, min_dist):
+		for dx in range(-min_dist + 1, min_dist):
+			var check_x = gx + dx
+			var check_y = gy + dy
+			var key = str(check_x) + "," + str(check_y)
+			if _occupied.has(key) and _occupied[key] == obj_type:
 				return false
 	return true
 
