@@ -1,20 +1,15 @@
 {
   "name": "remnant",
-  "version": "0.1.0",
-  "description": "REMNANT — A survival game by Christian Claudio",
+  "version": "0.2.0",
+  "description": "REMNANT — A survival game by Christian Claudio (Godot 4 Edition)",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview",
-    "start": "node server.js"
+    "start": "node server.js",
+    "build": "echo 'Godot export is pre-built - no build step needed'"
   },
   "dependencies": {
     "express": "^4.21.0",
-    "phaser": "^3.80.1"
-  },
-  "devDependencies": {
-    "vite": "^5.4.0"
+    "compression": "^1.7.4"
   },
   "engines": {
     "node": ">=18"

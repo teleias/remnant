@@ -1,4 +1,5 @@
 import express from 'express';
+import compression from 'compression';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -7,15 +8,32 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Gzip compression for WASM and JS (critical for 34MB WASM file)
+app.use(compression());
+
 app.use(express.json({ limit: '10mb' }));
 
-// Serve built game from dist/ with cache-busting for JS/CSS (hashed filenames)
-app.use(express.static(path.join(__dirname, 'dist'), {
+// Required headers for SharedArrayBuffer (Godot threading)
+app.use((req, res, next) => {
+  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+  res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');
+  next();
+});
+
+// Serve Godot HTML5 export from godot/dist/
+app.use(express.static(path.join(__dirname, 'godot', 'dist'), {
   maxAge: '1h',
   setHeaders: (res, filePath) => {
-    // HTML should never be cached (it references hashed JS/CSS)
     if (filePath.endsWith('.html')) {
       res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    }
+    // WASM MIME type
+    if (filePath.endsWith('.wasm')) {
+      res.setHeader('Content-Type', 'application/wasm');
+    }
+    // Godot PCK files
+    if (filePath.endsWith('.pck')) {
+      res.setHeader('Content-Type', 'application/octet-stream');
     }
   }
 }));
@@ -71,9 +89,9 @@ app.get('/api/saves', (req, res) => {
   }
 });
 
-// Fallback to index.html for SPA
+// Fallback to Godot index.html
 app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+  res.sendFile(path.join(__dirname, 'godot', 'dist', 'index.html'));
 });
 
 app.listen(PORT, () => {

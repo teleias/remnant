@@ -2,11 +2,7 @@
 .godot/
 *.import
 
-# Godot export
-dist/*.wasm
-dist/*.pck
-dist/*.js
-!dist/index.html
+# Godot export - dist/ files ARE the deployment artifacts, do not ignore
 
 # OS files
 .DS_Store

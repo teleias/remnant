@@ -1,7 +1,9 @@
 node_modules/
 dist/
+!godot/dist/
 saves/
 .env
 .DS_Store
 *.log
 nul
+.godot/

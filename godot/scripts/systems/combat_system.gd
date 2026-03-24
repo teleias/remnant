@@ -7,7 +7,7 @@ signal player_hit(damage: int, source: String)
 const ATTACK_COOLDOWN = 0.8 # seconds
 const MELEE_RANGE = 64 * 1.5 # 1.5 tiles
 const ATTACK_ARC_DEGREES = 108
-const DAMAGE_NUMBER_SCENE = preload("res://scenes/ui/damage_number.tscn") # Will create this
+var DAMAGE_NUMBER_SCENE = null  # Created dynamically - no separate scene needed
 
 var inventory_system: Node
 var skill_system: Node
