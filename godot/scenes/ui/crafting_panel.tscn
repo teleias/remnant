@@ -1,0 +1,170 @@
+[gd_scene load_steps=2 format=3 uid="uid://c1122334455"]
+
+[ext_resource type="Script" path="res://scripts/ui/crafting_panel.gd" id="1"]
+
+[node name="CraftingPanel" type="Panel"]
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -290.0
+offset_top = -220.0
+offset_right = 290.0
+offset_bottom = 220.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1")
+
+[node name="CategoryTabs" type="HBoxContainer" parent="."]
+layout_mode = 0
+offset_left = 10.0
+offset_top = 10.0
+offset_right = 570.0
+offset_bottom = 40.0
+
+[node name="AllButton" type="Button" parent="CategoryTabs"]
+layout_mode = 2
+text = "All"
+
+[node name="ToolsButton" type="Button" parent="CategoryTabs"]
+layout_mode = 2
+text = "Tools"
+
+[node name="FoodButton" type="Button" parent="CategoryTabs"]
+layout_mode = 2
+text = "Food"
+
+[node name="BuildingButton" type="Button" parent="CategoryTabs"]
+layout_mode = 2
+text = "Building"
+
+[node name="MedicalButton" type="Button" parent="CategoryTabs"]
+layout_mode = 2
+text = "Medical"
+
+[node name="ClothingButton" type="Button" parent="CategoryTabs"]
+layout_mode = 2
+text = "Clothing"
+
+[node name="LeftSide" type="Panel" parent="."]
+layout_mode = 0
+offset_left = 10.0
+offset_top = 50.0
+offset_right = 250.0
+offset_bottom = 390.0
+
+[node name="RecipeList" type="ScrollContainer" parent="LeftSide"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 5.0
+offset_top = 5.0
+offset_right = -5.0
+offset_bottom = -5.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="RecipeContainer" type="VBoxContainer" parent="LeftSide/RecipeList"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="RightSide" type="Panel" parent="."]
+layout_mode = 0
+offset_left = 260.0
+offset_top = 50.0
+offset_right = 570.0
+offset_bottom = 390.0
+
+[node name="RecipeDetail" type="VBoxContainer" parent="RightSide"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 10.0
+offset_top = 10.0
+offset_right = -10.0
+offset_bottom = -10.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="RecipeName" type="Label" parent="RightSide/RecipeDetail"]
+layout_mode = 2
+text = "Select a recipe"
+horizontal_alignment = 1
+
+[node name="Spacer1" type="Control" parent="RightSide/RecipeDetail"]
+custom_minimum_size = Vector2(0, 10)
+layout_mode = 2
+
+[node name="RecipeDescription" type="Label" parent="RightSide/RecipeDetail"]
+layout_mode = 2
+text = "No recipe selected."
+autowrap_mode = 3
+
+[node name="Spacer2" type="Control" parent="RightSide/RecipeDetail"]
+custom_minimum_size = Vector2(0, 20)
+layout_mode = 2
+
+[node name="RequirementsLabel" type="Label" parent="RightSide/RecipeDetail"]
+layout_mode = 2
+text = "Requirements:"
+
+[node name="InputsList" type="VBoxContainer" parent="RightSide/RecipeDetail"]
+layout_mode = 2
+
+[node name="Spacer3" type="Control" parent="RightSide/RecipeDetail"]
+custom_minimum_size = Vector2(0, 10)
+layout_mode = 2
+
+[node name="StationLabel" type="Label" parent="RightSide/RecipeDetail"]
+layout_mode = 2
+text = "Station: None"
+
+[node name="SkillLabel" type="Label" parent="RightSide/RecipeDetail"]
+layout_mode = 2
+text = "Skill: None"
+
+[node name="Spacer4" type="Control" parent="RightSide/RecipeDetail"]
+custom_minimum_size = Vector2(0, 10)
+layout_mode = 2
+
+[node name="OutputLabel" type="Label" parent="RightSide/RecipeDetail"]
+layout_mode = 2
+text = "Output:"
+
+[node name="OutputPreview" type="HBoxContainer" parent="RightSide/RecipeDetail"]
+layout_mode = 2
+
+[node name="Spacer5" type="Control" parent="RightSide/RecipeDetail"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="ProgressBar" type="ProgressBar" parent="RightSide/RecipeDetail"]
+visible = false
+layout_mode = 2
+max_value = 100.0
+show_percentage = false
+
+[node name="CraftButton" type="Button" parent="RightSide/RecipeDetail"]
+layout_mode = 2
+text = "Craft"
+
+[node name="Bottom" type="Panel" parent="."]
+layout_mode = 0
+offset_left = 10.0
+offset_top = 400.0
+offset_right = 570.0
+offset_bottom = 430.0
+
+[node name="StatusLabel" type="Label" parent="Bottom"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+text = "Ready to craft"
+horizontal_alignment = 1
+vertical_alignment = 1

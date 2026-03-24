@@ -1,0 +1,228 @@
+[gd_scene load_steps=2 format=3 uid="uid://c0123456789"]
+
+[ext_resource type="Script" path="res://scripts/ui/hud.gd" id="1"]
+
+[node name="HUD" type="CanvasLayer"]
+script = ExtResource("1")
+
+[node name="TopLeft" type="VBoxContainer" parent="."]
+offset_left = 20.0
+offset_top = 20.0
+offset_right = 240.0
+offset_bottom = 120.0
+
+[node name="HealthBar" type="HBoxContainer" parent="TopLeft"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="TopLeft/HealthBar"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Health"
+horizontal_alignment = 1
+
+[node name="Bar" type="ProgressBar" parent="TopLeft/HealthBar"]
+custom_minimum_size = Vector2(200, 16)
+layout_mode = 2
+max_value = 100.0
+value = 100.0
+show_percentage = false
+
+[node name="HungerBar" type="HBoxContainer" parent="TopLeft"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="TopLeft/HungerBar"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Hunger"
+horizontal_alignment = 1
+
+[node name="Bar" type="ProgressBar" parent="TopLeft/HungerBar"]
+custom_minimum_size = Vector2(200, 16)
+layout_mode = 2
+max_value = 100.0
+value = 100.0
+show_percentage = false
+
+[node name="ThirstBar" type="HBoxContainer" parent="TopLeft"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="TopLeft/ThirstBar"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Thirst"
+horizontal_alignment = 1
+
+[node name="Bar" type="ProgressBar" parent="TopLeft/ThirstBar"]
+custom_minimum_size = Vector2(200, 16)
+layout_mode = 2
+max_value = 100.0
+value = 100.0
+show_percentage = false
+
+[node name="FatigueBar" type="HBoxContainer" parent="TopLeft"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="TopLeft/FatigueBar"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Fatigue"
+horizontal_alignment = 1
+
+[node name="Bar" type="ProgressBar" parent="TopLeft/FatigueBar"]
+custom_minimum_size = Vector2(200, 16)
+layout_mode = 2
+max_value = 100.0
+value = 0.0
+show_percentage = false
+
+[node name="TopCenter" type="VBoxContainer" parent="."]
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -100.0
+offset_top = 20.0
+offset_right = 100.0
+offset_bottom = 100.0
+grow_horizontal = 2
+
+[node name="TimeLabel" type="Label" parent="TopCenter"]
+layout_mode = 2
+text = "06:00"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="DayLabel" type="Label" parent="TopCenter"]
+layout_mode = 2
+text = "Day 1"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="SeasonLabel" type="Label" parent="TopCenter"]
+layout_mode = 2
+text = "Spring"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="WeatherLabel" type="Label" parent="TopCenter"]
+layout_mode = 2
+text = "Clear"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="TopRight" type="VBoxContainer" parent="."]
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -120.0
+offset_top = 20.0
+offset_right = -20.0
+offset_bottom = 200.0
+grow_horizontal = 0
+
+[node name="MoodleContainer" type="VBoxContainer" parent="TopRight"]
+layout_mode = 2
+
+[node name="BottomCenter" type="HBoxContainer" parent="."]
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -168.0
+offset_top = -80.0
+offset_right = 168.0
+offset_bottom = -20.0
+grow_horizontal = 2
+grow_vertical = 0
+alignment = 1
+
+[node name="Slot1" type="Panel" parent="BottomCenter"]
+custom_minimum_size = Vector2(48, 48)
+layout_mode = 2
+
+[node name="KeyLabel" type="Label" parent="BottomCenter/Slot1"]
+layout_mode = 0
+offset_right = 48.0
+offset_bottom = 12.0
+text = "1"
+horizontal_alignment = 1
+
+[node name="Slot2" type="Panel" parent="BottomCenter"]
+custom_minimum_size = Vector2(48, 48)
+layout_mode = 2
+
+[node name="KeyLabel" type="Label" parent="BottomCenter/Slot2"]
+layout_mode = 0
+offset_right = 48.0
+offset_bottom = 12.0
+text = "2"
+horizontal_alignment = 1
+
+[node name="Slot3" type="Panel" parent="BottomCenter"]
+custom_minimum_size = Vector2(48, 48)
+layout_mode = 2
+
+[node name="KeyLabel" type="Label" parent="BottomCenter/Slot3"]
+layout_mode = 0
+offset_right = 48.0
+offset_bottom = 12.0
+text = "3"
+horizontal_alignment = 1
+
+[node name="Slot4" type="Panel" parent="BottomCenter"]
+custom_minimum_size = Vector2(48, 48)
+layout_mode = 2
+
+[node name="KeyLabel" type="Label" parent="BottomCenter/Slot4"]
+layout_mode = 0
+offset_right = 48.0
+offset_bottom = 12.0
+text = "4"
+horizontal_alignment = 1
+
+[node name="Slot5" type="Panel" parent="BottomCenter"]
+custom_minimum_size = Vector2(48, 48)
+layout_mode = 2
+
+[node name="KeyLabel" type="Label" parent="BottomCenter/Slot5"]
+layout_mode = 0
+offset_right = 48.0
+offset_bottom = 12.0
+text = "5"
+horizontal_alignment = 1
+
+[node name="Slot6" type="Panel" parent="BottomCenter"]
+custom_minimum_size = Vector2(48, 48)
+layout_mode = 2
+
+[node name="KeyLabel" type="Label" parent="BottomCenter/Slot6"]
+layout_mode = 0
+offset_right = 48.0
+offset_bottom = 12.0
+text = "6"
+horizontal_alignment = 1
+
+[node name="CenterBottom" type="VBoxContainer" parent="."]
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -150.0
+offset_top = -140.0
+offset_right = 150.0
+offset_bottom = -100.0
+grow_horizontal = 2
+grow_vertical = 0
+
+[node name="InteractionLabel" type="Label" parent="CenterBottom"]
+layout_mode = 2
+text = ""
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="GatherProgressBar" type="ProgressBar" parent="CenterBottom"]
+visible = false
+layout_mode = 2
+max_value = 100.0
+show_percentage = false

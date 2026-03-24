@@ -1,0 +1,21 @@
+# Godot 4 specific ignores
+.godot/
+*.import
+
+# Godot export
+dist/*.wasm
+dist/*.pck
+dist/*.js
+!dist/index.html
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+*.swp
+*.swo
+
+# Node modules (server)
+server/node_modules/
