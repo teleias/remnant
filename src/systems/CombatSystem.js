@@ -145,14 +145,16 @@ export default class CombatSystem {
     if (!player) return;
 
     if (!this.swingSprite) {
-      this.swingSprite = this.scene.add.rectangle(0, 0, 20, 4, 0xffffff, 0.6);
+      // Use a subtle light gray line (not bright white) so it doesn't look like a white box
+      this.swingSprite = this.scene.add.rectangle(0, 0, 18, 2, 0xccccaa, 0.4);
       this.swingSprite.setDepth(DEPTH.ENTITIES + 9999);
+      this.swingSprite.setVisible(false); // Start hidden
     }
 
     this.swingSprite.setPosition(player.x, player.y - 10);
     this.swingSprite.setVisible(true);
-    this.swingSprite.setAlpha(0.7);
-    this.swingTimer = 0.15;
+    this.swingSprite.setAlpha(0.5);
+    this.swingTimer = 0.12;
 
     // Rotate to face direction
     const angle = this.dirToAngle(this.gs.player.direction);

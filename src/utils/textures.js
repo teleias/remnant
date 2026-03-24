@@ -65,20 +65,42 @@ function drawDiamond(ctx, fillColor, strokeColor = null) {
   }
 }
 
-// THE WHITE BOX FIX: Use Phaser's native createCanvas() which handles WebGL upload correctly.
-// Previous attempts with addCanvas() produced white boxes because the GPU upload was unreliable.
-// Phaser's createCanvas() creates an internal CanvasTexture with proper lifecycle management.
+// Create texture by drawing on an offscreen canvas, then uploading to Phaser's TextureManager.
+//
+// NUCLEAR FIX for persistent white box issue:
+// We draw on an offscreen <canvas>, extract pixel data, then write it into a
+// Phaser-managed CanvasTexture pixel-by-pixel using putImageData. This guarantees
+// the pixel data is physically present in Phaser's canvas before refresh() uploads to GPU.
+//
+// Previous approaches that FAILED (all produced white boxes):
+// 1. addCanvas(name, canvas) — WebGL didn't upload
+// 2. addCanvas(name, canvas) + refresh() — Still white
+// 3. createCanvas(name, w, h) + draw on .context + refresh() — Still white
+// 4. createCanvas + drawImage(offscreen) + refresh() — Still white
+//
+// This approach: offscreen draw → getImageData → putImageData → refresh()
 function createTexture(scene, name, w, h, drawFn) {
-  // Remove existing texture if present (prevents duplicate key errors on hot reload)
+  // Remove existing texture if present (prevents duplicate key errors)
   if (scene.textures.exists(name)) {
     scene.textures.remove(name);
   }
-  // Use Phaser's built-in createCanvas — this is the STANDARD pattern
-  // It creates the canvas internally, gives us .context to draw on, and .refresh() uploads to GPU
-  const canvasTexture = scene.textures.createCanvas(name, w, h);
-  const ctx = canvasTexture.context;
-  drawFn(ctx, w, h);
-  canvasTexture.refresh();
+
+  // Step 1: Draw on a plain offscreen canvas using standard Canvas 2D API
+  const offscreen = document.createElement('canvas');
+  offscreen.width = w;
+  offscreen.height = h;
+  const offCtx = offscreen.getContext('2d');
+  drawFn(offCtx, w, h);
+
+  // Step 2: Extract the raw pixel data
+  const imageData = offCtx.getImageData(0, 0, w, h);
+
+  // Step 3: Create Phaser's managed CanvasTexture and write pixels directly
+  const ct = scene.textures.createCanvas(name, w, h);
+  ct.context.putImageData(imageData, 0, 0);
+
+  // Step 4: Upload to WebGL GPU
+  ct.refresh();
 }
 
 // Project Zomboid-style muted earth-tone palette
