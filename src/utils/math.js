@@ -19,8 +19,12 @@ export function screenToGrid(screenX, screenY) {
 }
 
 // Get isometric depth value for sorting (higher Y = rendered later)
-export function isoDepth(gridX, gridY, layer = 0) {
-  return layer + gridY * 200 + gridX;
+// In isometric view, tiles further south (higher gridX+gridY) render on top.
+// Elevation adds a small bump so higher tiles sort above same-row lower tiles.
+// Values scaled to stay within 0-99 range (DEPTH layer gaps are 100).
+export function isoDepth(gridX, gridY, elevation = 0) {
+  // Max gridX+gridY for 256x256 map = 510; scale to ~0-90 range
+  return (gridX + gridY) * 0.18 + elevation * 0.05;
 }
 
 // Clamp value between min and max

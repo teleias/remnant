@@ -165,9 +165,11 @@ export default class AnimalSystem {
     // Create sprite
     const texKey = `animal_${type}`;
     const pos = gridToScreen(gx, gy);
-    const sprite = this.scene.add.image(pos.x, pos.y, texKey)
+    const elevStep = this.worldGen.getElevationStep(gx, gy);
+    const heightOffset = elevStep * 8;
+    const sprite = this.scene.add.image(pos.x, pos.y - heightOffset, texKey)
       .setOrigin(0.5, 1.0)
-      .setDepth(DEPTH.ENTITIES + isoDepth(Math.round(gx), Math.round(gy)))
+      .setDepth(DEPTH.ENTITIES + isoDepth(Math.round(gx), Math.round(gy), elevStep))
       .setScale(def.size ? Math.max(def.size.w, 1) : 1);
 
     this.sprites.set(id, sprite);
@@ -777,8 +779,10 @@ export default class AnimalSystem {
       if (!sprite) continue;
 
       const pos = gridToScreen(animal.gx, animal.gy);
-      sprite.setPosition(pos.x, pos.y);
-      sprite.setDepth(DEPTH.ENTITIES + isoDepth(Math.round(animal.gx), Math.round(animal.gy)));
+      const elevStep = this.worldGen.getElevationStep(animal.gx, animal.gy);
+      const heightOffset = elevStep * 8;
+      sprite.setPosition(pos.x, pos.y - heightOffset);
+      sprite.setDepth(DEPTH.ENTITIES + isoDepth(Math.round(animal.gx), Math.round(animal.gy), elevStep));
       sprite.setFlipX(animal.direction < 0);
     }
   }

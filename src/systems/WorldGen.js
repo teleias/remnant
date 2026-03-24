@@ -21,6 +21,7 @@ export default class WorldGen {
     this.objects = null;      // [y][x] object data or null
     this.walkable = null;     // [y][x] boolean
     this.tileVariants = null; // [y][x] variant index (0, 1, or 2)
+    this.elevation = null;    // [y][x] elevation float (-1.0 to 1.0)
     this.buildings = [];      // Placed building instances
   }
 
@@ -37,6 +38,12 @@ export default class WorldGen {
     this.walkable = [];
     this.tileVariants = [];
 
+    // Initialize elevation array with Float32Array for performance
+    this.elevation = new Array(this.height);
+    for (let y = 0; y < this.height; y++) {
+      this.elevation[y] = new Float32Array(this.width);
+    }
+
     // Pass 1: Generate terrain and biomes
     for (let y = 0; y < this.height; y++) {
       this.tiles[y] = [];
@@ -48,6 +55,9 @@ export default class WorldGen {
       for (let x = 0; x < this.width; x++) {
         const elevation = fbm(terrainNoise, x * WORLD.TERRAIN_SCALE, y * WORLD.TERRAIN_SCALE, 5);
         const moisture = fbm(moistureNoise, x * WORLD.MOISTURE_SCALE, y * WORLD.MOISTURE_SCALE, 3);
+
+        // Store elevation for later use
+        this.elevation[y][x] = elevation;
 
         // River channels
         const riverVal = Math.abs(fbm(riverNoise, x * 0.003, y * 0.003 + 100, 2));
@@ -65,16 +75,20 @@ export default class WorldGen {
       }
     }
 
-    // Pass 2: Place objects (trees, rocks, bushes)
+    // Pass 2: Smooth elevation to prevent jagged cliffs
+    this.smoothElevation();
+    this.smoothElevation(); // Second pass for extra smoothness
+
+    // Pass 3: Place objects (trees, rocks, bushes)
     this.placeObjects(rng);
 
-    // Pass 3: Generate road network
+    // Pass 4: Generate road network
     this.generateRoads(rng);
 
-    // Pass 4: Place buildings (towns along roads, cabins in wilderness)
+    // Pass 5: Place buildings (towns along roads, cabins in wilderness)
     this.placeBuildings(rng);
 
-    // Pass 5: Apply world modifications from save state
+    // Pass 6: Apply world modifications from save state
     this.applyWorldMods();
 
     // Set player start position at nearest walkable grass tile to center
@@ -198,6 +212,7 @@ export default class WorldGen {
                 this.biomes[ry][rx] = BIOME.ROAD;
                 this.walkable[ry][rx] = true;
                 this.objects[ry][rx] = null; // Clear any objects on road
+                this.elevation[ry][rx] = 0.05; // Flatten road to ground level
               }
             }
           }
@@ -517,6 +532,8 @@ export default class WorldGen {
     return this.biomes[Math.floor(gy)][Math.floor(gx)];
   }
 
+  // Note: getElevationStep defined below near getElevation
+
   getObject(gx, gy) {
     const ix = Math.floor(gx), iy = Math.floor(gy);
     if (ix < 0 || iy < 0 || ix >= this.width || iy >= this.height) return null;
@@ -539,12 +556,51 @@ export default class WorldGen {
     this.objects[iy][ix] = { type, hp: 100, maxHp: 100, placed: true };
   }
 
+  smoothElevation() {
+    const smoothed = new Array(this.height);
+    for (let y = 0; y < this.height; y++) {
+      smoothed[y] = new Float32Array(this.width);
+      for (let x = 0; x < this.width; x++) {
+        let sum = this.elevation[y][x] * 2; // center weighted double
+        let count = 2;
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            if (dx === 0 && dy === 0) continue;
+            const ny = y + dy, nx = x + dx;
+            if (ny >= 0 && ny < this.height && nx >= 0 && nx < this.width) {
+              sum += this.elevation[ny][nx];
+              count++;
+            }
+          }
+        }
+        smoothed[y][x] = sum / count;
+      }
+    }
+    this.elevation = smoothed;
+  }
+
+  getElevation(gx, gy) {
+    const x = Math.floor(gx);
+    const y = Math.floor(gy);
+    if (x < 0 || x >= this.width || y < 0 || y >= this.height) return 0;
+    return this.elevation[y][x];
+  }
+
+  getElevationStep(gx, gy) {
+    const e = this.getElevation(gx, gy);
+    if (e < -0.1) return 0;   // low/water
+    if (e < 0.15) return 1;   // ground
+    if (e < 0.35) return 2;   // hills
+    return 3;                  // mountains
+  }
+
   destroy() {
     this.tiles = null;
     this.biomes = null;
     this.objects = null;
     this.walkable = null;
     this.tileVariants = null;
+    this.elevation = null;
     this.buildings = null;
   }
 }

@@ -60,8 +60,10 @@ export default class BuildingSystem {
 
     // Update ghost position
     const screenPos = gridToScreen(this.ghostGX, this.ghostGY);
-    this.ghostSprite.setPosition(screenPos.x, screenPos.y);
-    this.ghostSprite.setDepth(DEPTH.ROOF + isoDepth(this.ghostGX, this.ghostGY));
+    const elevStep = this.worldGen.getElevationStep(this.ghostGX, this.ghostGY);
+    const heightOffset = elevStep * 8;
+    this.ghostSprite.setPosition(screenPos.x, screenPos.y - heightOffset);
+    this.ghostSprite.setDepth(DEPTH.ROOF + isoDepth(this.ghostGX, this.ghostGY, elevStep));
 
     // Validate placement
     this.canPlace = this.isValidPlacement(this.ghostGX, this.ghostGY);

@@ -156,6 +156,7 @@ function fillWithPZNoise(ctx, baseHex, noise, seed, variant) {
       const noise_combined = (n1 + n2 + n3 + n4) / 1.875;
 
       // Isometric shading: NW light source (top-left brighter, bottom-right darker)
+      // ENHANCED: Stronger contrast for more pronounced 3D diamond shape
       const dx = px - HALF_W;
       const dy = py - HALF_H;
 
@@ -167,10 +168,10 @@ function fillWithPZNoise(ctx, baseHex, noise, seed, variant) {
       const topEdge = dy < 0;
 
       let shadingBoost = 0;
-      if (leftFace && topEdge) shadingBoost = 12;
-      else if (leftFace) shadingBoost = 8;
-      else if (rightFace && !topEdge) shadingBoost = -10;
-      else if (rightFace) shadingBoost = -6;
+      if (leftFace && topEdge) shadingBoost = 15;  // Increased from 12
+      else if (leftFace) shadingBoost = 10;         // Increased from 8
+      else if (rightFace && !topEdge) shadingBoost = -12;  // Increased from -10
+      else if (rightFace) shadingBoost = -8;         // Increased from -6
 
       // Apply noise and shading
       const variation = noise_combined * 22 + shadingBoost;
@@ -206,7 +207,56 @@ function applyDither(imgData, w, h, intensity = 8) {
   }
 }
 
-// Add individual grass blade strokes (1-3px)
+// Apply edge ambient occlusion to ground tiles (darkens SE edges for depth)
+function applyEdgeAO(ctx, w, h, intensity = 15) {
+  const imgData = ctx.getImageData(0, 0, w, h);
+  const data = imgData.data;
+  for (let py = 0; py < h; py++) {
+    for (let px = 0; px < w; px++) {
+      if (!insideDiamond(px, py)) continue;
+      const idx = (py * w + px) * 4;
+      if (data[idx + 3] === 0) continue;
+
+      // Distance from SE edges of diamond (bottom-right)
+      const distFromRight = 1 - (px / w);  // 0 at right, 1 at left
+      const distFromBottom = 1 - (py / h);  // 0 at bottom, 1 at top
+      const edgeDist = Math.min(
+        // Distance from SE edge
+        (Math.abs(px - HALF_W) / HALF_W + Math.abs(py - HALF_H) / HALF_H),
+        distFromRight * 2,
+        distFromBottom * 2
+      );
+
+      // Only darken near SE edges (bottom-right portion of diamond)
+      if (px > HALF_W * 0.6 || py > HALF_H * 0.6) {
+        const nearEdge = 1 - edgeDist;
+        if (nearEdge > 0.7) {
+          const darken = (nearEdge - 0.7) * intensity * 3;
+          data[idx] = Math.max(0, data[idx] - darken);
+          data[idx + 1] = Math.max(0, data[idx + 1] - darken);
+          data[idx + 2] = Math.max(0, data[idx + 2] - darken);
+        }
+      }
+    }
+  }
+  ctx.putImageData(imgData, 0, 0);
+}
+
+// Apply edge highlight to ground tiles (bright line on NW edges)
+function applyEdgeHighlight(ctx) {
+  ctx.strokeStyle = 'rgba(255, 255, 240, 0.12)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(HALF_W, 1);
+  ctx.lineTo(1, HALF_H);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(HALF_W, 1);
+  ctx.lineTo(TILE.WIDTH - 1, HALF_H);
+  ctx.stroke();
+}
+
+// Add individual grass blade strokes (1-4px, angled in iso perspective, clumped)
 function addGrassBlades(ctx, rng, count) {
   const bladeColors = [
     'rgba(70, 100, 50, 0.6)',
@@ -216,21 +266,32 @@ function addGrassBlades(ctx, rng, count) {
     'rgba(60, 90, 45, 0.5)'
   ];
 
-  for (let i = 0; i < count; i++) {
-    const px = HALF_W + (rng() - 0.5) * TILE.WIDTH * 0.75;
-    const py = HALF_H + (rng() - 0.5) * TILE.HEIGHT * 0.6;
-    if (!insideDiamond(px, py)) continue;
+  // Create grass in clumps of 3-5 blades
+  const clumpCount = Math.floor(count / 4);
+  for (let c = 0; c < clumpCount; c++) {
+    const clumpX = HALF_W + (rng() - 0.5) * TILE.WIDTH * 0.75;
+    const clumpY = HALF_H + (rng() - 0.5) * TILE.HEIGHT * 0.6;
+    if (!insideDiamond(clumpX, clumpY)) continue;
 
-    ctx.strokeStyle = bladeColors[Math.floor(rng() * bladeColors.length)];
-    ctx.lineWidth = 0.5 + rng() * 0.5;
+    const bladesInClump = 3 + Math.floor(rng() * 3); // 3-5 blades
+    for (let b = 0; b < bladesInClump; b++) {
+      const px = clumpX + (rng() - 0.5) * 3;
+      const py = clumpY + (rng() - 0.5) * 2;
+      if (!insideDiamond(px, py)) continue;
 
-    const bladeHeight = 1 + rng() * 2;
-    const bendAngle = (rng() - 0.5) * 0.4;
+      ctx.strokeStyle = bladeColors[Math.floor(rng() * bladeColors.length)];
+      ctx.lineWidth = 0.5 + rng() * 0.5;
 
-    ctx.beginPath();
-    ctx.moveTo(px, py);
-    ctx.lineTo(px + bendAngle * 2, py - bladeHeight);
-    ctx.stroke();
+      // Blade height 1-4px (increased from 1-3)
+      const bladeHeight = 1 + rng() * 3;
+      // Angle blades in NW-SE direction (isometric perspective)
+      const isoAngle = (rng() - 0.5) * 0.6 + 0.3; // Lean NW
+
+      ctx.beginPath();
+      ctx.moveTo(px, py);
+      ctx.lineTo(px + isoAngle * 3, py - bladeHeight);
+      ctx.stroke();
+    }
   }
 }
 
@@ -409,6 +470,10 @@ export function generateTileset(scene) {
       const imgData = ctx.getImageData(0, 0, TILE.WIDTH, TILE.HEIGHT);
       applyDither(imgData, TILE.WIDTH, TILE.HEIGHT, 10);
       ctx.putImageData(imgData, 0, 0);
+
+      // Apply edge enhancements for 3D depth
+      applyEdgeAO(ctx, TILE.WIDTH, TILE.HEIGHT);
+      applyEdgeHighlight(ctx);
     });
   }
 
@@ -437,6 +502,10 @@ export function generateTileset(scene) {
       const imgData = ctx.getImageData(0, 0, TILE.WIDTH, TILE.HEIGHT);
       applyDither(imgData, TILE.WIDTH, TILE.HEIGHT, 8);
       ctx.putImageData(imgData, 0, 0);
+
+      // Apply edge enhancements for 3D depth
+      applyEdgeAO(ctx, TILE.WIDTH, TILE.HEIGHT);
+      applyEdgeHighlight(ctx);
     });
   }
 
@@ -469,6 +538,10 @@ export function generateTileset(scene) {
       const imgData = ctx.getImageData(0, 0, TILE.WIDTH, TILE.HEIGHT);
       applyDither(imgData, TILE.WIDTH, TILE.HEIGHT, 10);
       ctx.putImageData(imgData, 0, 0);
+
+      // Apply edge enhancements for 3D depth
+      applyEdgeAO(ctx, TILE.WIDTH, TILE.HEIGHT);
+      applyEdgeHighlight(ctx);
     });
   }
 
@@ -503,6 +576,10 @@ export function generateTileset(scene) {
       const imgData = ctx.getImageData(0, 0, TILE.WIDTH, TILE.HEIGHT);
       applyDither(imgData, TILE.WIDTH, TILE.HEIGHT, 8);
       ctx.putImageData(imgData, 0, 0);
+
+      // Apply edge enhancements for 3D depth
+      applyEdgeAO(ctx, TILE.WIDTH, TILE.HEIGHT);
+      applyEdgeHighlight(ctx);
     });
   }
 
@@ -524,6 +601,10 @@ export function generateTileset(scene) {
       const imgData = ctx.getImageData(0, 0, TILE.WIDTH, TILE.HEIGHT);
       applyDither(imgData, TILE.WIDTH, TILE.HEIGHT, 6);
       ctx.putImageData(imgData, 0, 0);
+
+      // Apply edge enhancements for 3D depth
+      applyEdgeAO(ctx, TILE.WIDTH, TILE.HEIGHT);
+      applyEdgeHighlight(ctx);
     });
   }
 
@@ -735,6 +816,137 @@ function generateBuildingTiles(scene, noise, rng) {
         ctx.fillStyle = `rgba(${90 + rng()*40}, ${80 + rng()*30}, ${60 + rng()*20}, 0.5)`;
         ctx.fillRect(gx, gy, 1.5, 1.5);
       }
+    }
+  });
+
+  // CLIFF FACE TEXTURES (64w x 8h rectangular, not diamond-shaped)
+  // These are vertical cliff faces for elevation changes
+
+  // Cliff face - dirt (brown earth with striations)
+  createTexture(scene, 'tile_cliff_dirt', 64, 8, (ctx, w, h) => {
+    // Vertical gradient: darker at bottom, lighter at top
+    const gradient = ctx.createLinearGradient(0, h, 0, 0);
+    gradient.addColorStop(0, '#3a2a18');  // Dark bottom
+    gradient.addColorStop(1, '#6e5e42');  // Light top
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, w, h);
+
+    // Horizontal striation lines (sediment layers)
+    const cliffRng = mulberry32(20000);
+    ctx.strokeStyle = 'rgba(30, 20, 12, 0.4)';
+    ctx.lineWidth = 0.5;
+    for (let y = 0; y < h; y += 2) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(w, y + (cliffRng() - 0.5) * 0.5);
+      ctx.stroke();
+    }
+
+    // Random pebble/rock dots embedded in the face
+    ctx.fillStyle = 'rgba(80, 70, 50, 0.5)';
+    for (let i = 0; i < 25; i++) {
+      const px = cliffRng() * w;
+      const py = cliffRng() * h;
+      ctx.fillRect(px, py, 1, 1);
+    }
+
+    // Darker pebbles
+    ctx.fillStyle = 'rgba(40, 30, 20, 0.6)';
+    for (let i = 0; i < 15; i++) {
+      const px = cliffRng() * w;
+      const py = cliffRng() * h;
+      ctx.fillRect(px, py, 1, 1);
+    }
+  });
+
+  // Cliff face - stone (gray rock with cracks)
+  createTexture(scene, 'tile_cliff_stone', 64, 8, (ctx, w, h) => {
+    // Vertical gradient: dark bottom, lighter top
+    const gradient = ctx.createLinearGradient(0, h, 0, 0);
+    gradient.addColorStop(0, '#3a3a38');  // Dark bottom
+    gradient.addColorStop(1, '#6a6a62');  // Light top
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, w, h);
+
+    // Pronounced horizontal crack lines
+    const cliffRng = mulberry32(21000);
+    ctx.strokeStyle = 'rgba(20, 20, 18, 0.6)';
+    ctx.lineWidth = 0.5;
+    for (let y = 1; y < h; y += 2) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(w, y + (cliffRng() - 0.5));
+      ctx.stroke();
+    }
+
+    // Thicker crack lines (major faults)
+    ctx.strokeStyle = 'rgba(15, 15, 15, 0.8)';
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 2; i++) {
+      const y = h * (0.3 + i * 0.4);
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(w, y + (cliffRng() - 0.5) * 2);
+      ctx.stroke();
+    }
+
+    // Rock texture noise
+    ctx.fillStyle = 'rgba(100, 100, 95, 0.3)';
+    for (let i = 0; i < 20; i++) {
+      const px = cliffRng() * w;
+      const py = cliffRng() * h;
+      ctx.fillRect(px, py, 1, 1);
+    }
+
+    ctx.fillStyle = 'rgba(50, 50, 48, 0.4)';
+    for (let i = 0; i < 15; i++) {
+      const px = cliffRng() * w;
+      const py = cliffRng() * h;
+      ctx.fillRect(px, py, 1, 1);
+    }
+  });
+
+  // Cliff face - grass (grass edge on top, dirt face below)
+  createTexture(scene, 'tile_cliff_grass', 64, 8, (ctx, w, h) => {
+    // Top 2px: green grass edge
+    ctx.fillStyle = '#4a6630';
+    ctx.fillRect(0, 0, w, 2);
+
+    // Bottom 6px: brown dirt face (same as cliff_dirt)
+    const gradient = ctx.createLinearGradient(0, h, 0, 2);
+    gradient.addColorStop(0, '#3a2a18');  // Dark bottom
+    gradient.addColorStop(1, '#6e5e42');  // Light top
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 2, w, h - 2);
+
+    // Grass blades hanging over the edge (small green strokes at top)
+    const cliffRng = mulberry32(22000);
+    ctx.strokeStyle = 'rgba(60, 90, 45, 0.7)';
+    ctx.lineWidth = 0.5;
+    for (let i = 0; i < 30; i++) {
+      const x = cliffRng() * w;
+      ctx.beginPath();
+      ctx.moveTo(x, 1);
+      ctx.lineTo(x + (cliffRng() - 0.5) * 2, 3 + cliffRng() * 2);
+      ctx.stroke();
+    }
+
+    // Horizontal striation lines on dirt portion
+    ctx.strokeStyle = 'rgba(30, 20, 12, 0.4)';
+    ctx.lineWidth = 0.5;
+    for (let y = 3; y < h; y += 2) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(w, y + (cliffRng() - 0.5) * 0.5);
+      ctx.stroke();
+    }
+
+    // Pebble dots
+    ctx.fillStyle = 'rgba(80, 70, 50, 0.5)';
+    for (let i = 0; i < 20; i++) {
+      const px = cliffRng() * w;
+      const py = 2 + cliffRng() * (h - 2);
+      ctx.fillRect(px, py, 1, 1);
     }
   });
 
@@ -1166,10 +1378,16 @@ export function generateTreeSprites(scene) {
   createTexture(scene, 'obj_tree_0', 52, 72, (ctx, w, h) => {
     const cx = w / 2;
 
-    // Shadow
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+    // Enhanced ground shadow (elongated SE direction with gradient)
+    const shadowX = cx + 6;
+    const shadowY = h - 4;
+    const shadowGrad = ctx.createRadialGradient(shadowX, shadowY, 0, shadowX, shadowY, 10);
+    shadowGrad.addColorStop(0, 'rgba(0, 0, 0, 0.3)');
+    shadowGrad.addColorStop(0.7, 'rgba(0, 0, 0, 0.15)');
+    shadowGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    ctx.fillStyle = shadowGrad;
     ctx.beginPath();
-    ctx.ellipse(cx, h - 4, 12, 5, 0, 0, Math.PI * 2);
+    ctx.ellipse(shadowX, shadowY, 20, 8, 0.3, 0, Math.PI * 2);
     ctx.fill();
 
     // Trunk with bark texture and root flare
@@ -1255,10 +1473,16 @@ export function generateTreeSprites(scene) {
   createTexture(scene, 'obj_tree_1', 52, 72, (ctx, w, h) => {
     const cx = w / 2;
 
-    // Shadow
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
+    // Enhanced ground shadow (elongated SE direction with gradient)
+    const shadowX = cx + 6;
+    const shadowY = h - 4;
+    const shadowGrad = ctx.createRadialGradient(shadowX, shadowY, 0, shadowX, shadowY, 10);
+    shadowGrad.addColorStop(0, 'rgba(0, 0, 0, 0.25)');
+    shadowGrad.addColorStop(0.7, 'rgba(0, 0, 0, 0.12)');
+    shadowGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    ctx.fillStyle = shadowGrad;
     ctx.beginPath();
-    ctx.ellipse(cx, h - 4, 8, 4, 0, 0, Math.PI * 2);
+    ctx.ellipse(shadowX, shadowY, 20, 8, 0.3, 0, Math.PI * 2);
     ctx.fill();
 
     // Trunk
@@ -1344,10 +1568,16 @@ export function generateTreeSprites(scene) {
   createTexture(scene, 'obj_tree_2', 52, 72, (ctx, w, h) => {
     const cx = w / 2;
 
-    // Shadow
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+    // Enhanced ground shadow (elongated SE direction with gradient)
+    const shadowX = cx + 6;
+    const shadowY = h - 4;
+    const shadowGrad = ctx.createRadialGradient(shadowX, shadowY, 0, shadowX, shadowY, 12);
+    shadowGrad.addColorStop(0, 'rgba(0, 0, 0, 0.3)');
+    shadowGrad.addColorStop(0.7, 'rgba(0, 0, 0, 0.15)');
+    shadowGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    ctx.fillStyle = shadowGrad;
     ctx.beginPath();
-    ctx.ellipse(cx, h - 4, 14, 6, 0, 0, Math.PI * 2);
+    ctx.ellipse(shadowX, shadowY, 20, 8, 0.3, 0, Math.PI * 2);
     ctx.fill();
 
     // Trunk - thicker for oak
@@ -1512,10 +1742,16 @@ export function generateRockSprites(scene) {
 
   for (let v = 0; v < 2; v++) {
     createTexture(scene, `obj_rock_${v}`, 28, 22, (ctx, w, h) => {
-      // Shadow underneath
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+      // Enhanced ground shadow (elongated SE direction with gradient)
+      const shadowX = w / 2 + 3;
+      const shadowY = h - 2;
+      const shadowGrad = ctx.createRadialGradient(shadowX, shadowY, 0, shadowX, shadowY, 6);
+      shadowGrad.addColorStop(0, 'rgba(0, 0, 0, 0.35)');
+      shadowGrad.addColorStop(0.7, 'rgba(0, 0, 0, 0.2)');
+      shadowGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      ctx.fillStyle = shadowGrad;
       ctx.beginPath();
-      ctx.ellipse(w / 2, h - 2, w / 2.3, h / 6, 0, 0, Math.PI * 2);
+      ctx.ellipse(shadowX, shadowY, 12, 5, 0.3, 0, Math.PI * 2);
       ctx.fill();
 
       // Irregular rock shape with angular facets
@@ -1590,10 +1826,16 @@ export function generateBushSprites(scene) {
 
   for (let v = 0; v < 2; v++) {
     createTexture(scene, `obj_bush_${v}`, 24, 20, (ctx, w, h) => {
-      // Ground shadow
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
+      // Enhanced ground shadow (elongated SE direction with gradient)
+      const shadowX = w / 2 + 3;
+      const shadowY = h - 2;
+      const shadowGrad = ctx.createRadialGradient(shadowX, shadowY, 0, shadowX, shadowY, 5);
+      shadowGrad.addColorStop(0, 'rgba(0, 0, 0, 0.25)');
+      shadowGrad.addColorStop(0.7, 'rgba(0, 0, 0, 0.12)');
+      shadowGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      ctx.fillStyle = shadowGrad;
       ctx.beginPath();
-      ctx.ellipse(w / 2, h - 2, w / 2.4, h / 7, 0, 0, Math.PI * 2);
+      ctx.ellipse(shadowX, shadowY, 10, 4, 0.3, 0, Math.PI * 2);
       ctx.fill();
 
       // Multiple leaf cluster ellipses

@@ -101,7 +101,16 @@ export default class TileMap {
 
     // Return objects that are no longer visible
     for (const [key, sprite] of this.activeObjects) {
-      if (!visibleKeys.has(key)) {
+      // Check if key is a cliff sprite (format: cliff_x,y_direction)
+      if (key.startsWith('cliff_')) {
+        const parts = key.split('_');
+        const coordKey = parts[1]; // x,y part
+        if (!visibleKeys.has(coordKey)) {
+          sprite.setVisible(false).setActive(false);
+          this.objectPool.push(sprite);
+          this.activeObjects.delete(key);
+        }
+      } else if (!visibleKeys.has(key)) {
         sprite.setVisible(false).setActive(false);
         this.objectPool.push(sprite);
         this.activeObjects.delete(key);
@@ -124,13 +133,30 @@ export default class TileMap {
           if (!sprite) continue;
 
           const pos = gridToScreen(gx, gy);
+          const elevStep = this.worldGen.getElevationStep(gx, gy);
+          const heightOffset = elevStep * 8; // 8 pixels per elevation step
+
           sprite.setTexture(textureName)
-            .setPosition(pos.x, pos.y)
-            .setDepth(DEPTH.GROUND + isoDepth(gx, gy))
+            .setPosition(pos.x, pos.y - heightOffset)
+            .setDepth(DEPTH.GROUND + isoDepth(gx, gy, elevStep))
             .setVisible(true)
             .setActive(true);
 
           this.activeTiles.set(key, sprite);
+
+          // Render cliff faces if this tile is higher than neighbors
+          if (elevStep > 0) {
+            // Check south neighbor (gy+1)
+            const southStep = this.worldGen.getElevationStep(gx, gy + 1);
+            if (elevStep > southStep) {
+              this.renderCliffFace(gx, gy, elevStep, southStep, 'south');
+            }
+            // Check east neighbor (gx+1)
+            const eastStep = this.worldGen.getElevationStep(gx + 1, gy);
+            if (elevStep > eastStep) {
+              this.renderCliffFace(gx, gy, elevStep, eastStep, 'east');
+            }
+          }
         }
 
         // Object sprite
@@ -143,9 +169,12 @@ export default class TileMap {
           if (!sprite) continue;
 
           const pos = gridToScreen(gx, gy);
-          const depth = this.getObjectDepth(obj, gx, gy);
+          const elevStep = this.worldGen.getElevationStep(gx, gy);
+          const heightOffset = elevStep * 8;
+          const depth = this.getObjectDepth(obj, gx, gy, elevStep);
+
           sprite.setTexture(textureName)
-            .setPosition(pos.x, pos.y)
+            .setPosition(pos.x, pos.y - heightOffset)
             .setDepth(depth)
             .setVisible(true)
             .setActive(true);
@@ -195,12 +224,54 @@ export default class TileMap {
     return 'obj_tree_0';
   }
 
-  getObjectDepth(obj, gx, gy) {
+  getObjectDepth(obj, gx, gy, elevStep = 0) {
     // Walls and doors use WALLS depth layer for proper occlusion
     if (obj.type === 'wall' || obj.type === 'door') {
-      return DEPTH.WALLS + isoDepth(gx, gy);
+      return DEPTH.WALLS + isoDepth(gx, gy, elevStep);
     }
-    return DEPTH.OBJECTS + isoDepth(gx, gy);
+    return DEPTH.OBJECTS + isoDepth(gx, gy, elevStep);
+  }
+
+  renderCliffFace(gx, gy, highStep, lowStep, direction) {
+    const diff = highStep - lowStep;
+    const pos = gridToScreen(gx, gy);
+    const highOffset = highStep * 8;
+
+    const key = `cliff_${gx},${gy}_${direction}`;
+    if (this.activeObjects.has(key)) return; // already rendered
+
+    const sprite = this.getObjectFromPool();
+    if (!sprite) return;
+
+    // Determine cliff texture based on biome
+    const tileType = this.worldGen.getTileType(gx, gy);
+    let cliffTex = 'tile_cliff_dirt';
+    if (tileType === 'stone') cliffTex = 'tile_cliff_stone';
+    else if (tileType && tileType.startsWith('grass')) cliffTex = 'tile_cliff_grass';
+
+    if (!this.scene.textures.exists(cliffTex)) cliffTex = 'tile_cliff_dirt';
+
+    // Position cliff face below the tile
+    const cliffHeight = diff * 8;
+    if (direction === 'south') {
+      sprite.setTexture(cliffTex)
+        .setPosition(pos.x, pos.y - highOffset + TILE.HALF_H)
+        .setDisplaySize(TILE.WIDTH, cliffHeight)
+        .setOrigin(0.5, 0)
+        .setDepth(DEPTH.GROUND + isoDepth(gx, gy, lowStep) + 0.5)
+        .setVisible(true)
+        .setActive(true);
+    } else {
+      sprite.setTexture(cliffTex)
+        .setPosition(pos.x + TILE.HALF_W, pos.y - highOffset + TILE.HALF_H)
+        .setDisplaySize(TILE.HALF_W, cliffHeight)
+        .setOrigin(0.5, 0)
+        .setDepth(DEPTH.GROUND + isoDepth(gx, gy, lowStep) + 0.5)
+        .setVisible(true)
+        .setActive(true);
+    }
+
+    this.activeObjects.set(key, sprite);
   }
 
   getTileFromPool() {
@@ -244,9 +315,12 @@ export default class TileMap {
     if (!sprite) return;
 
     const pos = gridToScreen(gx, gy);
+    const elevStep = this.worldGen.getElevationStep(gx, gy);
+    const heightOffset = elevStep * 8;
+
     sprite.setTexture(textureName)
-      .setPosition(pos.x, pos.y)
-      .setDepth(DEPTH.OBJECTS + isoDepth(gx, gy))
+      .setPosition(pos.x, pos.y - heightOffset)
+      .setDepth(DEPTH.OBJECTS + isoDepth(gx, gy, elevStep))
       .setVisible(true)
       .setActive(true);
 

@@ -19,12 +19,14 @@ export default class PlayerSystem {
 
   create() {
     const pos = gridToScreen(this.gs.player.gridX, this.gs.player.gridY);
+    const elevStep = this.worldGen.getElevationStep(this.gs.player.gridX, this.gs.player.gridY);
+    const heightOffset = elevStep * 8;
     this.currentScreenX = pos.x;
-    this.currentScreenY = pos.y;
+    this.currentScreenY = pos.y - heightOffset;
 
-    this.sprite = this.scene.add.image(pos.x, pos.y, 'player_S')
+    this.sprite = this.scene.add.image(pos.x, pos.y - heightOffset, 'player_S')
       .setOrigin(0.5, 1.0)
-      .setDepth(DEPTH.ENTITIES + isoDepth(this.gs.player.gridX, this.gs.player.gridY));
+      .setDepth(DEPTH.ENTITIES + isoDepth(this.gs.player.gridX, this.gs.player.gridY, elevStep));
 
     // Walk animation state
     this.walkFrame = 0;         // 0 = idle, 1 or 2 = walk frames
@@ -144,14 +146,16 @@ export default class PlayerSystem {
   updateSpritePosition(dt) {
     // Smooth interpolation of sprite position toward current grid position
     const target = gridToScreen(this.gs.player.gridX, this.gs.player.gridY);
+    const elevStep = this.worldGen.getElevationStep(this.gs.player.gridX, this.gs.player.gridY);
+    const heightOffset = elevStep * 8;
     const lerpFactor = 1 - Math.pow(0.001, dt); // Smooth ~60fps
 
     this.currentScreenX = lerp(this.currentScreenX, target.x, lerpFactor);
-    this.currentScreenY = lerp(this.currentScreenY, target.y, lerpFactor);
+    this.currentScreenY = lerp(this.currentScreenY, target.y - heightOffset, lerpFactor);
 
     this.sprite.setPosition(this.currentScreenX, this.currentScreenY);
     this.sprite.setDepth(
-      DEPTH.ENTITIES + isoDepth(Math.round(this.gs.player.gridX), Math.round(this.gs.player.gridY))
+      DEPTH.ENTITIES + isoDepth(Math.round(this.gs.player.gridX), Math.round(this.gs.player.gridY), elevStep)
     );
   }
 
