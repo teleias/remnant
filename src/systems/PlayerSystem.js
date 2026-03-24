@@ -24,8 +24,12 @@ export default class PlayerSystem {
 
     this.sprite = this.scene.add.image(pos.x, pos.y, 'player_S')
       .setOrigin(0.5, 1.0)
-      .setDepth(DEPTH.ENTITIES + isoDepth(this.gs.player.gridX, this.gs.player.gridY))
-;
+      .setDepth(DEPTH.ENTITIES + isoDepth(this.gs.player.gridX, this.gs.player.gridY));
+
+    // Walk animation state
+    this.walkFrame = 0;         // 0 = idle, 1 or 2 = walk frames
+    this.walkTimer = 0;
+    this.walkFrameRate = 0.18;  // seconds per frame (snappy PZ-style)
 
     // Camera follow with smooth lerp
     this.scene.cameras.main.startFollow(this.sprite, true, 0.08, 0.08);
@@ -152,18 +156,40 @@ export default class PlayerSystem {
   }
 
   updateSpriteTexture() {
-    // Map 8 directions to 4 sprite textures (mirror for opposite sides)
+    // Map 8 directions to 4 sprite directions (mirror for opposite sides)
     const dir = this.gs.player.direction;
-    let texKey = 'player_S';
+    let baseDir = 'S';
     let flipX = false;
 
     switch (dir) {
-      case 'S': case 'SE': texKey = 'player_S'; break;
-      case 'SW': texKey = 'player_S'; flipX = true; break;
-      case 'N': case 'NW': texKey = 'player_N'; break;
-      case 'NE': texKey = 'player_N'; flipX = true; break;
-      case 'E': texKey = 'player_E'; break;
-      case 'W': texKey = 'player_W'; break;
+      case 'S': case 'SE': baseDir = 'S'; break;
+      case 'SW': baseDir = 'S'; flipX = true; break;
+      case 'N': case 'NW': baseDir = 'N'; break;
+      case 'NE': baseDir = 'N'; flipX = true; break;
+      case 'E': baseDir = 'E'; break;
+      case 'W': baseDir = 'W'; break;
+    }
+
+    // Determine texture key based on movement state
+    let texKey;
+    if (this.gs.player.moving) {
+      // Cycle walk frames: idle -> walk_1 -> walk_2 -> walk_1 -> ...
+      this.walkTimer += this.scene.game.loop.delta / 1000;
+      // Sprint = faster animation, sneak = slower
+      let frameTime = this.walkFrameRate;
+      if (this.gs.player.sprinting) frameTime = 0.12;
+      else if (this.gs.player.sneaking) frameTime = 0.3;
+
+      if (this.walkTimer >= frameTime) {
+        this.walkTimer = 0;
+        this.walkFrame = this.walkFrame === 1 ? 2 : 1;
+      }
+      texKey = `player_${baseDir}_walk_${this.walkFrame || 1}`;
+    } else {
+      // Standing still — use idle frame, reset walk state
+      this.walkFrame = 0;
+      this.walkTimer = 0;
+      texKey = `player_${baseDir}`;
     }
 
     if (this.scene.textures.exists(texKey)) {

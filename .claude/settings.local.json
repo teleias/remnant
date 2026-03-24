@@ -18,7 +18,16 @@
       "Bash(curl:*)",
       "Bash(python:*)",
       "Bash(git commit:*)",
-      "Bash(node -e:*)"
+      "Bash(node -e:*)",
+      "WebFetch(domain:remnant-production.up.railway.app)",
+      "Bash(timeout:*)",
+      "Bash(ping:*)",
+      "Bash(npx vite:*)",
+      "WebFetch(domain:localhost)",
+      "Bash(cat:*)",
+      "Bash(find:*)",
+      "WebSearch",
+      "WebFetch(domain:docs.phaser.io)"
     ]
   }
 }

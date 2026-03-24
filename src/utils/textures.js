@@ -1,7 +1,7 @@
 // Programmatic texture generation utilities for REMNANT
 // Project Zomboid-quality isometric tiles, object sprites, and character sprites
-// All textures are created using offscreen canvas and added via scene.textures.addCanvas()
-// CRITICAL: In WebGL mode, refresh() MUST be called after addCanvas() to upload texture to GPU
+// All textures use Phaser's native scene.textures.createCanvas() + .refresh() pattern
+// This ensures proper WebGL GPU upload and eliminates white box rendering issues
 
 import { TILE } from '../config/constants.js';
 import { SimplexNoise } from './noise.js';
@@ -65,19 +65,20 @@ function drawDiamond(ctx, fillColor, strokeColor = null) {
   }
 }
 
-// THE WHITE BOX FIX: Create texture using offscreen canvas and addCanvas
-// CRITICAL: In WebGL mode, we must call refresh() to upload the texture to GPU
+// THE WHITE BOX FIX: Use Phaser's native createCanvas() which handles WebGL upload correctly.
+// Previous attempts with addCanvas() produced white boxes because the GPU upload was unreliable.
+// Phaser's createCanvas() creates an internal CanvasTexture with proper lifecycle management.
 function createTexture(scene, name, w, h, drawFn) {
-  const canvas = document.createElement('canvas');
-  canvas.width = w;
-  canvas.height = h;
-  const ctx = canvas.getContext('2d');
-  drawFn(ctx, w, h);
-  const texture = scene.textures.addCanvas(name, canvas);
-  // WebGL requires refresh() to upload the canvas data to GPU texture
-  if (texture && typeof texture.refresh === 'function') {
-    texture.refresh();
+  // Remove existing texture if present (prevents duplicate key errors on hot reload)
+  if (scene.textures.exists(name)) {
+    scene.textures.remove(name);
   }
+  // Use Phaser's built-in createCanvas — this is the STANDARD pattern
+  // It creates the canvas internally, gives us .context to draw on, and .refresh() uploads to GPU
+  const canvasTexture = scene.textures.createCanvas(name, w, h);
+  const ctx = canvasTexture.context;
+  drawFn(ctx, w, h);
+  canvasTexture.refresh();
 }
 
 // Project Zomboid-style muted earth-tone palette
@@ -2077,10 +2078,276 @@ export function generatePlayerSprites(scene) {
     drawPixelOutline(ctx, w, h, '#141510');
   }
 
+  // Draw a walking variant with leg offset for animation
+  function drawSurvivorWalk(ctx, dir, frame) {
+    const cx = w / 2;
+    // frame 1 = left leg forward, frame 2 = right leg forward
+    const legOffset = frame === 1 ? 3 : -3;
+
+    ctx.clearRect(0, 0, w, h);
+
+    if (dir === 'S' || dir === 'N') {
+      // For S/N directions, offset legs forward/back
+      const leftLegY = 50 + (frame === 1 ? -legOffset : legOffset);
+      const rightLegY = 50 + (frame === 1 ? legOffset : -legOffset);
+      const leftBootY = leftLegY;
+      const rightBootY = rightLegY;
+
+      if (dir === 'S') {
+        // Boots with offset
+        ctx.fillStyle = colors.boots;
+        ctx.fillRect(cx - 10, leftBootY, 8, 8);
+        ctx.fillRect(cx + 2, rightBootY, 8, 8);
+        ctx.fillStyle = colors.bootSole;
+        ctx.fillRect(cx - 10, leftBootY + 6, 8, 2);
+        ctx.fillRect(cx + 2, rightBootY + 6, 8, 2);
+
+        // Cargo pants with offset
+        ctx.fillStyle = colors.pants;
+        ctx.fillRect(cx - 9, 38, 8, leftBootY - 38);
+        ctx.fillRect(cx + 1, 38, 8, rightBootY - 38);
+        ctx.strokeStyle = colors.pantsShadow;
+        ctx.lineWidth = 0.5;
+        ctx.strokeRect(cx - 8, 42, 4, 5);
+        ctx.strokeRect(cx + 4, 42, 4, 5);
+
+        // Torso (same as idle)
+        ctx.fillStyle = colors.shirt;
+        ctx.fillRect(cx - 10, 22, 20, 18);
+        ctx.fillStyle = colors.shirtShadow;
+        ctx.fillRect(cx - 10, 22, 3, 18);
+        ctx.fillRect(cx + 7, 22, 3, 18);
+        ctx.strokeStyle = '#4a4a3a';
+        ctx.lineWidth = 0.5;
+        ctx.beginPath();
+        ctx.moveTo(cx, 23);
+        ctx.lineTo(cx, 38);
+        ctx.stroke();
+        ctx.fillStyle = colors.shirtShadow;
+        ctx.fillRect(cx - 4, 22, 8, 2);
+        ctx.strokeStyle = colors.shirtShadow;
+        ctx.strokeRect(cx - 7, 26, 4, 4);
+        ctx.strokeRect(cx + 3, 26, 4, 4);
+
+        // Arms swinging (opposite to legs)
+        const armSwing = frame === 1 ? 2 : -2;
+        ctx.fillStyle = colors.shirt;
+        ctx.beginPath();
+        ctx.arc(cx - 12, 25, 4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillRect(cx - 15, 25 - armSwing, 5, 12);
+        ctx.beginPath();
+        ctx.arc(cx + 12, 25, 4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillRect(cx + 10, 25 + armSwing, 5, 12);
+        // Hands
+        ctx.fillStyle = colors.skin;
+        ctx.fillRect(cx - 15, 36 - armSwing, 5, 4);
+        ctx.fillRect(cx + 10, 36 + armSwing, 5, 4);
+
+        // Head (same as idle)
+        const headGrad = ctx.createRadialGradient(cx - 2, 12, 2, cx, 14, 10);
+        headGrad.addColorStop(0, colors.skinLight);
+        headGrad.addColorStop(1, colors.skin);
+        ctx.fillStyle = headGrad;
+        ctx.beginPath();
+        ctx.arc(cx, 14, 10, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = 'rgba(40, 30, 20, 0.15)';
+        ctx.beginPath();
+        ctx.arc(cx, 18, 7, 0.3, Math.PI - 0.3);
+        ctx.fill();
+        ctx.fillStyle = colors.capTop;
+        ctx.beginPath();
+        ctx.arc(cx, 8, 10, Math.PI, Math.PI * 2);
+        ctx.fill();
+        ctx.fillRect(cx - 10, 8, 20, 4);
+        ctx.fillStyle = colors.capVisor;
+        ctx.fillRect(cx - 8, 11, 16, 3);
+        ctx.fillStyle = 'rgba(30, 25, 20, 0.3)';
+        ctx.fillRect(cx - 6, 12, 12, 2);
+        ctx.fillStyle = '#1a1510';
+        ctx.fillRect(cx - 5, 13, 2, 2);
+        ctx.fillRect(cx + 3, 13, 2, 2);
+
+      } else {
+        // NORTH walk
+        ctx.fillStyle = colors.boots;
+        ctx.fillRect(cx - 10, leftBootY, 8, 8);
+        ctx.fillRect(cx + 2, rightBootY, 8, 8);
+        ctx.fillStyle = colors.bootSole;
+        ctx.fillRect(cx - 10, leftBootY + 6, 8, 2);
+        ctx.fillRect(cx + 2, rightBootY + 6, 8, 2);
+
+        ctx.fillStyle = colors.pants;
+        ctx.fillRect(cx - 9, 38, 8, leftBootY - 38);
+        ctx.fillRect(cx + 1, 38, 8, rightBootY - 38);
+        ctx.strokeStyle = colors.pantsShadow;
+        ctx.lineWidth = 0.5;
+        ctx.strokeRect(cx - 8, 42, 4, 5);
+        ctx.strokeRect(cx + 4, 42, 4, 5);
+
+        ctx.fillStyle = colors.shirt;
+        ctx.fillRect(cx - 10, 22, 20, 18);
+        ctx.fillStyle = colors.shirtShadow;
+        ctx.fillRect(cx - 1, 22, 2, 18);
+
+        // Backpack
+        ctx.fillStyle = colors.backpack;
+        ctx.fillRect(cx - 7, 25, 14, 12);
+        ctx.strokeStyle = '#3a3028';
+        ctx.lineWidth = 0.5;
+        ctx.strokeRect(cx - 7, 25, 14, 12);
+        ctx.strokeStyle = '#4a4038';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(cx - 5, 25);
+        ctx.lineTo(cx - 8, 22);
+        ctx.moveTo(cx + 5, 25);
+        ctx.lineTo(cx + 8, 22);
+        ctx.stroke();
+
+        // Arms swinging
+        const armSwing2 = frame === 1 ? 2 : -2;
+        ctx.fillStyle = colors.shirt;
+        ctx.beginPath();
+        ctx.arc(cx - 12, 25, 4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillRect(cx - 15, 25 + armSwing2, 5, 12);
+        ctx.beginPath();
+        ctx.arc(cx + 12, 25, 4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillRect(cx + 10, 25 - armSwing2, 5, 12);
+        ctx.fillStyle = colors.skin;
+        ctx.fillRect(cx - 15, 36 + armSwing2, 5, 4);
+        ctx.fillRect(cx + 10, 36 - armSwing2, 5, 4);
+
+        // Head (back)
+        ctx.fillStyle = colors.hair;
+        ctx.beginPath();
+        ctx.arc(cx, 14, 10, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = colors.skin;
+        ctx.fillRect(cx - 3, 20, 6, 4);
+        ctx.fillStyle = colors.capTop;
+        ctx.beginPath();
+        ctx.arc(cx, 8, 10, Math.PI, Math.PI * 2);
+        ctx.fill();
+        ctx.fillRect(cx - 10, 8, 20, 6);
+      }
+    } else {
+      // EAST/WEST walk — shift legs forward/back along x
+      const flip = dir === 'E' ? 1 : -1;
+      const ox = flip * 3;
+      const legShift1 = frame === 1 ? 2 : -2;
+      const legShift2 = frame === 1 ? -2 : 2;
+
+      // Boot 1 (shifted)
+      ctx.fillStyle = colors.boots;
+      ctx.fillRect(cx + ox - 7 + legShift1, 50, 7, 8);
+      ctx.fillRect(cx + ox + 1 + legShift2, 50, 7, 8);
+      ctx.fillStyle = colors.bootSole;
+      ctx.fillRect(cx + ox - 7 + legShift1, 56, 7, 2);
+      ctx.fillRect(cx + ox + 1 + legShift2, 56, 7, 2);
+
+      // Cargo pants (shifted)
+      ctx.fillStyle = colors.pants;
+      ctx.fillRect(cx + ox - 6 + legShift1, 38, 6, 14);
+      ctx.fillRect(cx + ox + 1 + legShift2, 38, 6, 14);
+      ctx.strokeStyle = colors.pantsShadow;
+      ctx.lineWidth = 0.5;
+      ctx.strokeRect(cx + ox + (flip > 0 ? 2 : -5), 42, 3, 5);
+
+      // Torso (same)
+      ctx.fillStyle = colors.shirt;
+      ctx.fillRect(cx + ox - 8, 22, 16, 18);
+      ctx.fillStyle = colors.shirtShadow;
+      ctx.fillRect(cx + ox + (flip > 0 ? 5 : -8), 22, 3, 18);
+      ctx.strokeStyle = '#4a4a3a';
+      ctx.lineWidth = 0.5;
+      ctx.beginPath();
+      ctx.moveTo(cx + ox + flip * 2, 23);
+      ctx.lineTo(cx + ox + flip * 2, 38);
+      ctx.stroke();
+
+      // Arm swinging
+      const armSwingS = frame === 1 ? 2 : -2;
+      ctx.fillStyle = colors.shirt;
+      const armX = dir === 'E' ? cx + ox + 6 : cx + ox - 12;
+      ctx.beginPath();
+      ctx.arc(armX + 2, 25, 4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillRect(armX, 25 + armSwingS, 5, 12);
+      ctx.fillStyle = colors.skin;
+      ctx.fillRect(armX, 36 + armSwingS, 5, 4);
+
+      // Head (side profile — same as idle)
+      const headGradSide = ctx.createRadialGradient(cx + ox - flip * 2, 12, 2, cx + ox, 14, 10);
+      headGradSide.addColorStop(0, colors.skinLight);
+      headGradSide.addColorStop(1, colors.skin);
+      ctx.fillStyle = headGradSide;
+      ctx.beginPath();
+      ctx.arc(cx + ox, 14, 10, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = 'rgba(40, 30, 20, 0.15)';
+      ctx.beginPath();
+      if (dir === 'E') {
+        ctx.arc(cx + ox + 3, 17, 5, -0.5, Math.PI * 0.5);
+      } else {
+        ctx.arc(cx + ox - 3, 17, 5, Math.PI * 0.5, Math.PI + 0.5);
+      }
+      ctx.fill();
+
+      ctx.fillStyle = colors.hair;
+      if (dir === 'W') {
+        ctx.beginPath();
+        ctx.arc(cx + ox - 5, 9, 8, 0, Math.PI);
+        ctx.fill();
+        ctx.fillRect(cx + ox - 10, 9, 10, 6);
+        ctx.fillRect(cx + ox + 2, 9, 5, 8);
+      } else {
+        ctx.beginPath();
+        ctx.arc(cx + ox + 5, 9, 8, 0, Math.PI);
+        ctx.fill();
+        ctx.fillRect(cx + ox, 9, 10, 6);
+        ctx.fillRect(cx + ox - 7, 9, 5, 8);
+      }
+
+      ctx.fillStyle = colors.capTop;
+      ctx.beginPath();
+      ctx.arc(cx + ox, 8, 10, Math.PI, Math.PI * 2);
+      ctx.fill();
+      ctx.fillRect(cx + ox - 10, 8, 20, 5);
+      ctx.fillStyle = colors.capVisor;
+      if (dir === 'E') {
+        ctx.fillRect(cx + ox + 5, 11, 8, 3);
+      } else {
+        ctx.fillRect(cx + ox - 13, 11, 8, 3);
+      }
+
+      ctx.fillStyle = '#1a1510';
+      ctx.fillRect(cx + ox + flip * 4, 13, 2, 2);
+    }
+
+    // Pixel outline
+    drawPixelOutline(ctx, w, h, '#141510');
+  }
+
+  // Generate idle frames (standing)
   for (const dir of dirs) {
     createTexture(scene, `player_${dir}`, w, h, (ctx) => {
       drawSurvivor(ctx, dir);
     });
+  }
+
+  // Generate walk frames (2 per direction for alternating step animation)
+  for (const dir of dirs) {
+    for (let frame = 1; frame <= 2; frame++) {
+      createTexture(scene, `player_${dir}_walk_${frame}`, w, h, (ctx) => {
+        drawSurvivorWalk(ctx, dir, frame);
+      });
+    }
   }
 
   // Default 'player' texture (copy of S)
