@@ -383,17 +383,20 @@ func create_vehicle_sprite(vtype: String) -> ImageTexture:
 
 	return ImageTexture.create_from_image(img)
 
-func build_world(world_gen: WorldGenerator, parent: Node2D):
+func build_world(world_gen: WorldGenerator, parent: Node2D, obj_container: Node2D = null):
 	world_generator = world_gen
 	world_node = parent
 
 	print("TileManager: Building world with viewport culling...")
 
-	# Create object container (Y-sort for depth)
-	object_container = Node2D.new()
-	object_container.name = "Objects"
-	object_container.y_sort_enabled = true
-	world_node.add_child(object_container)
+	# Use existing object container if provided, otherwise create one
+	if obj_container:
+		object_container = obj_container
+	else:
+		object_container = Node2D.new()
+		object_container.name = "Objects"
+		object_container.y_sort_enabled = true
+		world_node.add_child(object_container)
 
 	# Initialize sprite pools
 	_initialize_tile_pool()

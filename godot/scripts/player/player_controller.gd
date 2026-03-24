@@ -29,13 +29,19 @@ var is_sprinting: bool = false
 var is_sneaking: bool = false
 
 # Walkability grid (set by world)
-var walkability_grid: Array = []
-var elevation_grid: Array = []
+var walkability_grid = []  # PackedByteArray or Array
+var elevation_grid = []  # PackedFloat32Array or Array
 var world_size: int = 256
 
 func _ready():
+	# Add to player group so HUD and other systems can find us
+	add_to_group("player")
+
 	# Create procedural player sprite
-	create_player_texture()
+	if sprite:
+		create_player_texture()
+	else:
+		push_warning("Player: Sprite2D not found, cannot create texture")
 
 	# Sync with GameState
 	var gs = get_node("/root/GameState") if has_node("/root/GameState") else null
@@ -183,7 +189,7 @@ func is_walkable(gx: int, gy: int) -> bool:
 		return true  # No grid loaded yet, allow movement
 	var idx = gy * world_size + gx
 	if idx >= 0 and idx < walkability_grid.size():
-		return walkability_grid[idx]
+		return walkability_grid[idx] == 1  # PackedByteArray returns int, not bool
 	return false
 
 func update_animation():
@@ -212,11 +218,11 @@ func update_animation():
 		if animation_player.current_animation != anim_name:
 			animation_player.play(anim_name)
 
-func set_walkability_grid(grid: Array, size: int):
+func set_walkability_grid(grid, size: int):
 	walkability_grid = grid
 	world_size = size
 
-func set_elevation_grid(grid: Array, size: int):
+func set_elevation_grid(grid, size: int):
 	elevation_grid = grid
 	world_size = size
 

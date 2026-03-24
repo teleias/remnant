@@ -22,11 +22,12 @@ app.use((req, res, next) => {
 
 // Serve Godot HTML5 export from godot/dist/
 app.use(express.static(path.join(__dirname, 'godot', 'dist'), {
-  maxAge: '1h',
+  maxAge: 0,  // No caching during development
   setHeaders: (res, filePath) => {
-    if (filePath.endsWith('.html')) {
-      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-    }
+    // No cache on anything during active development
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
     // WASM MIME type
     if (filePath.endsWith('.wasm')) {
       res.setHeader('Content-Type', 'application/wasm');

@@ -53,7 +53,7 @@ func _ready() -> void:
 	tile_manager = TileManager.new()
 	tile_manager.name = "TileManager"
 	add_child(tile_manager)
-	tile_manager.build_world(world_generator, world_node)
+	tile_manager.build_world(world_generator, world_node, object_container)
 
 	# Setup player
 	if player:
