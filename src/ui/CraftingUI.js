@@ -163,7 +163,7 @@ export default class CraftingUI {
   }
 
   createRecipeListMask() {
-    // Create mask graphics
+    // Create mask graphics (used only as geometry mask source, NOT rendered)
     this.recipeMask = this.scene.add.graphics();
     this.recipeMask.fillStyle(0xffffff);
     this.recipeMask.fillRect(
@@ -172,6 +172,9 @@ export default class CraftingUI {
       this.recipeListW,
       this.recipeListH
     );
+    // CRITICAL: Hide the mask graphics so it doesn't render as a visible white box!
+    // The geometry mask still works even when the source graphics is invisible.
+    this.recipeMask.setVisible(false);
 
     // Recipe list container
     this.recipeListContainer = this.scene.add.container(0, 0);

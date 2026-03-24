@@ -19,7 +19,7 @@ import GameScene from './scenes/GameScene.js';
 import UIScene from './scenes/UIScene.js';
 
 const config = {
-  type: Phaser.CANVAS,  // Force Canvas renderer to eliminate WebGL texture upload issues
+  type: Phaser.AUTO,
   parent: 'game-container',
   width: window.innerWidth,
   height: window.innerHeight,
