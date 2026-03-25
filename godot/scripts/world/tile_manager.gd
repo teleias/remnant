@@ -1834,45 +1834,22 @@ func build_world(generator: WorldGenerator, container: Node2D, obj_container: No
 func _build_object_spatial_index():
 	object_spatial_index.clear()
 
-	# Populate from world_generator's object lists
-	for obj in world_generator.trees:
+	# Populate from world_generator's unified objects array
+	for obj in world_generator.objects:
 		var key = str(obj.gx) + "," + str(obj.gy)
 		object_spatial_index[key] = {
-			"type": "tree",
-			"variant": obj.variant,
-			"rotation": 0
+			"type": obj.type,
+			"variant": obj.get("variant", 0),
+			"rotation": obj.get("rotation", 0)
 		}
 
-	for obj in world_generator.rocks:
-		var key = str(obj.gx) + "," + str(obj.gy)
-		object_spatial_index[key] = {
-			"type": "rock",
-			"variant": obj.variant,
-			"rotation": 0
-		}
-
-	for obj in world_generator.bushes:
-		var key = str(obj.gx) + "," + str(obj.gy)
-		object_spatial_index[key] = {
-			"type": "bush",
-			"variant": obj.variant,
-			"rotation": 0
-		}
-
-	for obj in world_generator.furniture:
-		var key = str(obj.gx) + "," + str(obj.gy)
-		object_spatial_index[key] = {
-			"type": obj.furniture_type,
-			"variant": 0,
-			"rotation": obj.rotation
-		}
-
+	# Vehicles are stored separately
 	for obj in world_generator.vehicles:
 		var key = str(obj.gx) + "," + str(obj.gy)
 		object_spatial_index[key] = {
-			"type": obj.vehicle_type,
+			"type": obj.type,
 			"variant": 0,
-			"rotation": obj.rotation
+			"rotation": obj.get("rotation", 0)
 		}
 
 func set_camera_target(target: Node2D):
@@ -1882,8 +1859,8 @@ func _process(_delta):
 	if not camera_target:
 		return
 
-	var camera_gx = _screen_to_grid_x(camera_target.position)
-	var camera_gy = _screen_to_grid_y(camera_target.position)
+	var camera_gx = _screen_to_grid_x(camera_target.global_position)
+	var camera_gy = _screen_to_grid_y(camera_target.global_position)
 
 	# Update visible area if camera moved
 	if camera_gx != last_camera_gx or camera_gy != last_camera_gy:
@@ -1934,7 +1911,10 @@ func _update_visible_objects(camera_gx: int, camera_gy: int):
 				var variant = obj_data["variant"]
 				var rotation = obj_data["rotation"]
 
+				# Tree, rock, bush use variant suffix; furniture/vehicles use type name directly
 				var obj_key = obj_type + "_" + str(variant)
+				if not object_textures.has(obj_key):
+					obj_key = obj_type  # Fallback: furniture/vehicles stored without variant
 
 				# Reuse or create object sprite
 				if active_object_sprites.has(key):
@@ -1950,15 +1930,18 @@ func _update_visible_objects(camera_gx: int, camera_gy: int):
 							sprite.visible = true
 							new_active_objects[key] = sprite
 
+				# Shadow key matches object key
+				var shadow_key = obj_key
+
 				# Reuse or create shadow sprite
 				if active_shadow_sprites.has(key):
 					new_active_shadows[key] = active_shadow_sprites[key]
 					active_shadow_sprites.erase(key)
 				else:
-					if shadow_textures.has(obj_key):
+					if shadow_textures.has(shadow_key):
 						var shadow_sprite = _get_shadow_sprite_from_pool()
 						if shadow_sprite:
-							shadow_sprite.texture = shadow_textures[obj_key]
+							shadow_sprite.texture = shadow_textures[shadow_key]
 							shadow_sprite.position = grid_to_screen(gx, gy, 0)
 							shadow_sprite.rotation_degrees = rotation
 							shadow_sprite.visible = true
@@ -2056,25 +2039,41 @@ func _screen_to_grid_y(screen_pos: Vector2) -> int:
 # ========== TILE NAME LOOKUP ==========
 
 func get_tile_name(gx: int, gy: int) -> String:
-	var noise_val = world_generator.noise.get_noise_2d(float(gx), float(gy))
-	var moisture = world_generator.moisture_noise.get_noise_2d(float(gx) * 0.5, float(gy) * 0.5)
+	# Out of bounds check
+	if gx < 0 or gy < 0 or gx >= world_generator.WORLD_SIZE or gy >= world_generator.WORLD_SIZE:
+		return "grass_0"
 
-	# Determine biome
-	if noise_val < -0.3:
+	# Check tiles array first for roads and floors (set by world generator)
+	var tile_val = world_generator.get_tile(gx, gy)
+
+	if tile_val == 20:  # Road tile
 		var variant = abs(hash_int(gx, gy)) % 3
-		return "water_" + str(variant)
-	elif noise_val < -0.1:
-		var variant = abs(hash_int(gx, gy)) % 2
-		return "sand_" + str(variant)
-	elif noise_val > 0.5:
+		return "road_" + str(variant)
+	elif tile_val >= 30:  # Floor tile (inside building)
 		var variant = abs(hash_int(gx, gy)) % 3
-		return "stone_" + str(variant)
-	elif moisture < -0.2:
-		var variant = abs(hash_int(gx, gy)) % 4
-		return "dirt_" + str(variant)
-	else:
-		var variant = abs(hash_int(gx, gy)) % 6
-		return "grass_" + str(variant)
+		return "floor_" + str(variant)
+
+	# Use biome data from world generator
+	var biome = world_generator.get_biome(gx, gy)
+	var variant_hash = abs(hash_int(gx, gy))
+
+	match biome:
+		WorldGenerator.BIOME_WATER:
+			return "water_" + str(variant_hash % 3)
+		WorldGenerator.BIOME_MOUNTAIN:
+			return "stone_" + str(variant_hash % 3)
+		WorldGenerator.BIOME_DENSE_FOREST, WorldGenerator.BIOME_FOREST:
+			return "grass_" + str(variant_hash % 6)
+		WorldGenerator.BIOME_MEADOW:
+			# Mix grass and dirt based on moisture
+			var idx = gy * world_generator.WORLD_SIZE + gx
+			var moist = world_generator.moisture[idx] if idx < world_generator.moisture.size() else 0.5
+			if moist < 0.3:
+				return "dirt_" + str(variant_hash % 4)
+			else:
+				return "grass_" + str(variant_hash % 6)
+		_:
+			return "grass_" + str(variant_hash % 6)
 
 # ========== HASH FUNCTIONS ==========
 

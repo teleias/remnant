@@ -267,7 +267,12 @@ func teleport_to(gx: float, gy: float):
 	if gs:
 		gs.player_grid_x = gx
 		gs.player_grid_y = gy
-	update_screen_position()
+	# Set position directly (no lerp) for teleport
+	var elev = get_elevation(int(grid_x), int(grid_y))
+	var screen_x = (grid_x - grid_y) * 64
+	var screen_y = (grid_x + grid_y) * 32
+	screen_y -= elev * 16.0
+	global_position = Vector2(screen_x, screen_y)
 
 func generate_character_frames():
 	# Generate all animation frames for all 8 directions with Project Zomboid quality
