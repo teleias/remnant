@@ -5,7 +5,7 @@ signal gather_completed(object_type: String, items: Array)
 signal gather_cancelled()
 signal interaction_available(object: Node, interaction_type: String)
 
-const INTERACTION_RANGE = 1.5 * 64 # 1.5 tiles
+const INTERACTION_RANGE = 1.5 * 128 # 1.5 tiles
 
 var inventory_system: Node
 var skill_system: Node

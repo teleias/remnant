@@ -22,6 +22,10 @@ var crafting_panel: Panel
 var build_panel: Panel
 var death_screen: CanvasLayer
 
+# Post-processing
+var post_process_layer: CanvasLayer
+var post_process_rect: ColorRect
+
 # Game state
 var game_paused: bool = false
 var player_dead: bool = false
@@ -91,6 +95,9 @@ func _ready() -> void:
 	survival_system.name = "SurvivalSystem"
 	add_child(survival_system)
 
+	# Setup post-processing (PZ-style film grain, vignette, color grading)
+	setup_post_processing()
+
 	# Connect signals
 	connect_signals()
 
@@ -132,6 +139,31 @@ func load_ui_scenes() -> void:
 			death_screen = death_scene.instantiate()
 			ui_layer.add_child(death_screen)
 			death_screen.visible = false
+
+func setup_post_processing() -> void:
+	# Create a CanvasLayer above everything for post-processing
+	post_process_layer = CanvasLayer.new()
+	post_process_layer.name = "PostProcessLayer"
+	post_process_layer.layer = 100  # Above all other layers
+	add_child(post_process_layer)
+
+	# Create full-screen ColorRect with shader
+	post_process_rect = ColorRect.new()
+	post_process_rect.name = "PostProcessRect"
+	post_process_rect.anchors_preset = Control.PRESET_FULL_RECT
+	post_process_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE  # Don't block input
+
+	# Load and apply the post-processing shader
+	var shader_path = "res://assets/shaders/post_process.gdshader"
+	if ResourceLoader.exists(shader_path):
+		var shader = load(shader_path)
+		var material = ShaderMaterial.new()
+		material.shader = shader
+		post_process_rect.material = material
+		post_process_layer.add_child(post_process_rect)
+		print("Game: Post-processing shader applied (film grain, vignette, color grading)")
+	else:
+		push_warning("Game: Post-processing shader not found at " + shader_path)
 
 func connect_signals() -> void:
 	var gs = get_node("/root/GameState")

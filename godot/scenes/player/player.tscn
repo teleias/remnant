@@ -3,11 +3,16 @@
 [ext_resource type="Script" path="res://scripts/player/player_controller.gd" id="1"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_player"]
-size = Vector2(20, 20)
+size = Vector2(24, 24)
 
 [node name="Player" type="CharacterBody2D"]
 script = ExtResource("1")
 z_index = 10
+
+[node name="Shadow" type="Sprite2D" parent="."]
+z_index = -1
+modulate = Color(1, 1, 1, 0.35)
+position = Vector2(6, 8)
 
 [node name="Sprite2D" type="Sprite2D" parent="."]
 modulate = Color(1, 1, 1, 1)
@@ -18,16 +23,16 @@ shape = SubResource("RectangleShape2D_player")
 [node name="Camera2D" type="Camera2D" parent="."]
 position_smoothing_enabled = true
 position_smoothing_speed = 8.0
-zoom = Vector2(1.5, 1.5)
+zoom = Vector2(2.0, 2.0)
 
 [node name="InteractionArea" type="Area2D" parent="."]
 
 [node name="InteractionShape" type="CollisionShape2D" parent="InteractionArea"]
 shape = SubResource("RectangleShape2D_player")
-scale = Vector2(2.5, 2.5)
+scale = Vector2(3.0, 3.0)
 
 [node name="AttackArea" type="Area2D" parent="."]
 
 [node name="AttackShape" type="CollisionShape2D" parent="AttackArea"]
 shape = SubResource("RectangleShape2D_player")
-scale = Vector2(1.8, 1.8)
+scale = Vector2(2.0, 2.0)

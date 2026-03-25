@@ -4,7 +4,7 @@ signal build_mode_toggled(enabled: bool)
 signal structure_placed(structure_type: String, position: Vector2)
 signal placement_valid_changed(is_valid: bool)
 
-const TILE_SIZE = 64
+const TILE_SIZE = 128
 const MAX_BUILD_DISTANCE = 4 * TILE_SIZE # 4 tiles
 
 var recipe_db: Node

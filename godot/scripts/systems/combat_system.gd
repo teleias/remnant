@@ -5,7 +5,7 @@ signal enemy_hit(enemy: Node, damage: int)
 signal player_hit(damage: int, source: String)
 
 const ATTACK_COOLDOWN = 0.8 # seconds
-const MELEE_RANGE = 64 * 1.5 # 1.5 tiles
+const MELEE_RANGE = 128 * 1.5 # 1.5 tiles
 const ATTACK_ARC_DEGREES = 108
 var DAMAGE_NUMBER_SCENE = null  # Created dynamically - no separate scene needed
 
@@ -40,7 +40,7 @@ func try_attack(player_pos: Vector2, facing_direction: Vector2) -> bool:
 	var weapon_data = weapon if not weapon.is_empty() else _get_fist_data()
 
 	var damage = _calculate_damage(weapon_data)
-	var attack_range = weapon_data.get("range", 1.0) * 64 # Convert tiles to pixels
+	var attack_range = weapon_data.get("range", 1.0) * 128 # Convert tiles to pixels
 
 	# Get attack speed modifier
 	var attack_speed = weapon_data.get("attack_speed", 1.0)

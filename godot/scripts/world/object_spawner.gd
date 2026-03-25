@@ -2,12 +2,12 @@ class_name ObjectSpawner
 extends Node2D
 
 # Spawning configuration
-const MIN_SPAWN_DISTANCE: float = 20.0 * 32  # 20 tiles in pixels
-const MAX_SPAWN_DISTANCE: float = 40.0 * 32  # 40 tiles in pixels
-const DESPAWN_DISTANCE: float = 50.0 * 32    # 50 tiles in pixels
+const MIN_SPAWN_DISTANCE: float = 20.0 * 64  # 20 tiles in pixels (half TILE_WIDTH)
+const MAX_SPAWN_DISTANCE: float = 40.0 * 64  # 40 tiles in pixels
+const DESPAWN_DISTANCE: float = 50.0 * 64    # 50 tiles in pixels
 const MAX_ACTIVE_ANIMALS: int = 40
 const SPAWN_INTERVAL: float = 8.0
-const TILE_SIZE: int = 32
+const TILE_SIZE: int = 64  # Half of TILE_WIDTH (128) for grid spacing
 
 # Animal scene preload
 var animal_scene: PackedScene = preload("res://scenes/animals/animal.tscn")

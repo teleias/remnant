@@ -160,9 +160,9 @@ func _is_near_station(station_type: String) -> bool:
 
 	match station_type:
 		"campfire":
-			return _is_object_in_range(nearby_objects, player_pos, 3.0 * 64) # 3 tiles
+			return _is_object_in_range(nearby_objects, player_pos, 3.0 * 128) # 3 tiles
 		"workbench":
-			return _is_object_in_range(nearby_objects, player_pos, 2.0 * 64) # 2 tiles
+			return _is_object_in_range(nearby_objects, player_pos, 2.0 * 128) # 2 tiles
 		_:
 			return false
 
